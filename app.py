@@ -43,7 +43,7 @@ if "last_query_time" not in st.session_state: st.session_state.last_query_time =
 if "daily_token_consumption" not in st.session_state: st.session_state.daily_token_consumption = 0
 if "active_engine" not in st.session_state: st.session_state.active_engine = None
 if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Hello. Please tell me which engine you are working on: 912UL, 912ULS, 912iS, 914, 915iS or 916iS in order to get started"}]
+    st.session_state.messages = [{"role": "assistant", "content": "Hello. Please tell me which engine you are working on: 912UL, 912ULS, 912iS, 914, 915iS or 916iS in order for me to help."}]
 
 # Initialize vector index
 if "vector_index" not in st.session_state:
