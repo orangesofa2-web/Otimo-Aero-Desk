@@ -83,7 +83,7 @@ if "vector_index" not in st.session_state:
 
 WELCOME_PROMPT = """### 🔧 Engine Selection Required
 
-Welcome to the Otimo Aero workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration. 
+Welcome to the workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration. 
 
 Critical parameters—such as plug gaps, line-purging steps, fuel pressures, and torque values—vary significantly across model variants. Setting this filter ensures the search engine safely targets the correct technical manual documentation.
 
@@ -95,7 +95,7 @@ Critical parameters—such as plug gaps, line-purging steps, fuel pressures, and
 * **915iS**
 * **916iS**
 
-*Type your matching engine model below to open the maintenance desk channels.*"""
+*Type your matching engine key code below to open the maintenance desk channels.*"""
 
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": WELCOME_PROMPT}]
@@ -230,8 +230,9 @@ def call_llm(prompt: str):
 # 8. SIDEBAR CONTROL PANEL (ADMIN GATE LOCKED)
 # =====================================================
 url_params = st.query_params
+is_admin_mode = url_params.get("admin") == "true"
 
-if url_params.get("admin") == "true":
+if is_admin_mode:
     with st.sidebar:
         st.header("⚙️ Admin Control Panel")
         
@@ -265,18 +266,29 @@ if url_params.get("admin") == "true":
         st.caption(f"Daily Token Counter: {st.session_state.daily_token_consumption} / {DAILY_TOKEN_BUDGET}")
 
 # =====================================================
-# 9. MAIN CHAT DISPLAY
+# 9. DISPLAY CONTENT GENERATOR MATRIX
 # =====================================================
-st.title("Otimo Aero AI Technician")
+def render_main_workspace():
+    st.title("Otimo Aero AI Technician")
 
-status_line = f"Workspace Status — Engine Profile: {st.session_state.active_engine if st.session_state.active_engine else 'NOT INITIALISED'}"
-if st.session_state.active_topic:
-    status_line += f" | Current Maintenance Task: {st.session_state.active_topic}"
-st.subheader(status_line)
+    status_line = f"Workspace Status — Engine Profile: {st.session_state.active_engine if st.session_state.active_engine else 'NOT INITIALISED'}"
+    if st.session_state.active_topic:
+        status_line += f" | Current Maintenance Task: {st.session_state.active_topic}"
+    st.subheader(status_line)
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.write(message["content"])
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.write(message["content"])
+
+# Structural width alignment gate based on URL admin context parameter status
+if is_admin_mode:
+    # Full wide screen layout when admin controls are active
+    render_main_workspace()
+else:
+    # 15% margins on both sides, center console locked to exactly 70% width
+    left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
+    with center_console:
+        render_main_workspace()
 
 # =====================================================
 # 10. USER COMMAND RUNNER WITH ARCHITECTURE HOOKS
@@ -287,8 +299,15 @@ if user_query:
     current_time = time.time()
     time_passed = current_time - st.session_state.last_query_time
     
-    with st.chat_message("user"):
-        st.write(user_query)
+    # Render user query inside aligned column structure if not admin
+    if is_admin_mode:
+        with st.chat_message("user"):
+            st.write(user_query)
+    else:
+        left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
+        with center_console:
+            with st.chat_message("user"):
+                st.write(user_query)
 
     # TEST TRIGGER (Case-Insensitive Normalization Fix)
     if user_query.strip().upper() == "TEST_ALERT_NOW":
@@ -307,8 +326,14 @@ if user_query:
             })
             st.rerun()
         else:
-            with st.chat_message("assistant"):
-                st.markdown(WELCOME_PROMPT)
+            if is_admin_mode:
+                with st.chat_message("assistant"):
+                    st.markdown(WELCOME_PROMPT)
+            else:
+                left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
+                with center_console:
+                    with st.chat_message("assistant"):
+                        st.markdown(WELCOME_PROMPT)
             st.session_state.messages.append({"role": "user", "content": user_query})
             st.session_state.messages.append({"role": "assistant", "content": WELCOME_PROMPT})
             st.stop()
@@ -327,8 +352,12 @@ if user_query:
     if time_passed < COOLDOWN_SECONDS:
         wait_remainder = int(COOLDOWN_SECONDS - time_passed)
         error_msg = f"⏳ **RATE LIMIT TRIGGERED:** Please wait {wait_remainder} more seconds before submitting another question to protect system stability."
-        with st.chat_message("assistant"):
-            st.warning(error_msg)
+        if is_admin_mode:
+            with st.chat_message("assistant"): st.warning(error_msg)
+        else:
+            left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
+            with center_console:
+                with st.chat_message("assistant"): st.warning(error_msg)
         st.session_state.messages.append({"role": "user", "content": user_query})
         st.session_state.messages.append({"role": "assistant", "content": error_msg})
         st.stop()
@@ -336,8 +365,12 @@ if user_query:
     # GUARDRAIL LAYER B: Query Size Hard Cap
     if len(user_query) > MAX_QUERY_CHARACTERS:
         error_msg = f"⚠️ **INPUT OVERFLOW:** Your entry is too long ({len(user_query)} characters). Questions are limited to {MAX_QUERY_CHARACTERS} characters."
-        with st.chat_message("assistant"):
-            st.error(error_msg)
+        if is_admin_mode:
+            with st.chat_message("assistant"): st.error(error_msg)
+        else:
+            left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
+            with center_console:
+                with st.chat_message("assistant"): st.error(error_msg)
         st.session_state.messages.append({"role": "user", "content": user_query})
         st.session_state.messages.append({"role": "assistant", "content": error_msg})
         st.stop()
@@ -351,9 +384,13 @@ if user_query:
             )
             st.session_state.alert_triggered_today = True
 
-        error_msg = "🚨 **EMERGENCY SHUTDOWN:** The Agent has reached its daily limit of questions. Please check again tomorrow."
-        with st.chat_message("assistant"):
-            st.error(error_msg)
+        error_msg = "🚨 **EMERGENCY SHUTDOWN:** The application has reached its maximum daily data allotment. API requests have been locked down to prevent balance exhaustion. Please check again tomorrow."
+        if is_admin_mode:
+            with st.chat_message("assistant"): st.error(error_msg)
+        else:
+            left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
+            with center_console:
+                with st.chat_message("assistant"): st.error(error_msg)
         st.session_state.messages.append({"role": "user", "content": user_query})
         st.session_state.messages.append({"role": "assistant", "content": error_msg})
         st.stop()
@@ -362,7 +399,14 @@ if user_query:
     st.session_state.last_query_time = current_time
     st.session_state.messages.append({"role": "user", "content": user_query})
 
-    with st.chat_message("assistant"):
+    # Prepare chat canvas position context variables for response streaming
+    if is_admin_mode:
+        assistant_canvas = st.chat_message("assistant")
+    else:
+        left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
+        assistant_canvas = center_console.chat_message("assistant")
+
+    with assistant_canvas:
         response_placeholder = st.empty()
 
         # SCENARIO A: Resolving pending clarification requests
@@ -451,7 +495,7 @@ Structure your response exactly like this:
 * If the task text is missing from the extracts, explicitly ask a clear technical clarifying question to narrow down the missing details.
 
 ### 2. PARTS & MANUAL DATA
-* List specific part numbers, tool codes, or official manual chapter titles explicitly extracted from the text.
+* List specific part numbers, tool codes, or official manual chapter titles explicitly extracted from the text. Filter strictly according to Directive 4.
 * If missing due to text gaps, state: \"Clarification required from user\".
 
 ---
