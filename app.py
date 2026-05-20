@@ -95,7 +95,7 @@ Critical parameters—such as plug gaps, line-purging steps, fuel pressures, and
 * **915iS**
 * **916iS**
 
-*Type your matching engine model below to open the maintenance desk channels.*"""
+*Type your matching engine key code below to open the maintenance desk channels.*"""
 
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": WELCOME_PROMPT}]
@@ -110,14 +110,22 @@ def requires_variant(query: str) -> bool:
     q = query.lower().replace(" ", "").replace("-", "")
     return "912" in q and not any(v in q for v in ["uls", "ul", "is"])
 
-def invalid_configuration(query: str) -> bool:
+def invalid_configuration(query: str, engine_profile: str = None) -> bool:
     q = query.lower().replace(" ", "").replace("-", "")
     carb_terms = ["carb", "sync", "balance", "float", "choke"]
     injected_engines = ["915", "916", "912is"]
     
     is_carb_query = any(t in q for t in carb_terms)
-    is_injected = any(e in q for e in injected_engines)
-    return is_carb_query and is_injected
+    
+    # Check current active profile if passed down from session states
+    is_profile_injected = False
+    if engine_profile:
+        ep = engine_profile.lower().replace(" ", "").replace("-", "")
+        is_profile_injected = any(e in ep for e in injected_engines)
+        
+    is_query_injected = any(e in q for e in injected_engines)
+    
+    return is_carb_query and (is_query_injected or is_profile_injected)
 
 def get_embedding(text: str, model="text-embedding-3-small"):
     cleaned_text = text.replace("\n", " ")
@@ -282,21 +290,20 @@ def render_main_workspace():
 
 # Structural width alignment gate based on URL admin context parameter status
 if is_admin_mode:
-    # Full wide screen layout when admin controls are active
     render_main_workspace()
 else:
-    # 15% margins on both sides, center console locked to exactly 70% width
     left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
     with center_console:
         render_main_workspace()
 
 # =====================================================
-# 10. USER COMMAND RUNNER WITH ARCHITECTURE HOOKS
+# 10. CONSTANT CHAT INPUT RENDERING (FIXES VANISHING BAR)
 # =====================================================
-# Align the typing input interface elements dynamically to mirror the 70% console frame width bounds
+# Formulating input container independent of computational loops to protect UI elements
 if is_admin_mode:
     user_query = st.chat_input("Enter technical maintenance question...")
 else:
+    # Generates a separate structural column pair at the footer to lock typing frame alignment
     left_input_margin, center_input_box, right_input_margin = st.columns([0.15, 0.70, 0.15])
     with center_input_box:
         user_query = st.chat_input("Enter technical maintenance question...")
@@ -315,7 +322,7 @@ if user_query:
             with st.chat_message("user"):
                 st.write(user_query)
 
-    # TEST TRIGGER (Case-Insensitive Normalization Fix)
+    # TEST TRIGGER
     if user_query.strip().upper() == "TEST_ALERT_NOW":
         st.session_state.daily_token_consumption = DAILY_TOKEN_BUDGET + 1000
 
@@ -333,13 +340,11 @@ if user_query:
             st.rerun()
         else:
             if is_admin_mode:
-                with st.chat_message("assistant"):
-                    st.markdown(WELCOME_PROMPT)
+                with st.chat_message("assistant"): st.markdown(WELCOME_PROMPT)
             else:
                 left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
                 with center_console:
-                    with st.chat_message("assistant"):
-                        st.markdown(WELCOME_PROMPT)
+                    with st.chat_message("assistant"): st.markdown(WELCOME_PROMPT)
             st.session_state.messages.append({"role": "user", "content": user_query})
             st.session_state.messages.append({"role": "assistant", "content": WELCOME_PROMPT})
             st.stop()
@@ -390,7 +395,7 @@ if user_query:
             )
             st.session_state.alert_triggered_today = True
 
-        error_msg = "🚨 **EMERGENCY SHUTDOWN:** The agent has exceeded its number of questions for today. Please try again tomorrow."
+        error_msg = "🚨 **EMERGENCY SHUTDOWN:** The application has reached its maximum daily data allotment. API requests have been locked down to prevent balance exhaustion. Please check again tomorrow."
         if is_admin_mode:
             with st.chat_message("assistant"): st.error(error_msg)
         else:
@@ -435,8 +440,8 @@ To provide the correct technical clearances or procedure parameters, please spec
             st.session_state.messages.append({"role": "assistant", "content": assistant_response})
             st.stop()
 
-        # SCENARIO C: Hardcoded Configuration Blocking Guard
-        if invalid_configuration(user_query) or (invalid_configuration(st.session_state.active_engine) and any(t in user_query.lower() for t in ["carb", "sync", "balance"])):
+        # SCENARIO C: Hardcoded Fuel Injection Component Gate (Fixes Casing Leak)
+        if invalid_configuration(user_query, st.session_state.active_engine):
             assistant_response = """### 1. QUICK SPEC / PROCEDURE
 * **CRITICAL ERROR:** The engine model specified configuration platform utilizes electronic fuel injection and does not possess carburetors.
 * Carburetor synchronization and pneumatic balancing procedures are completely inapplicable to this power plant.
