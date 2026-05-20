@@ -11,10 +11,14 @@ import time
 # =====================================================
 # 1. PAGE CONFIGURATION
 # =====================================================
-st.set_page_config(page_title="Otimo Aero AI Desk", page_icon="✈️", layout="wide")
+st.set_page_config(
+    page_title="Otimo Aero AI Desk",
+    page_icon="✈️",
+    layout="wide"
+)
 
 # =====================================================
-# 2. API CONFIGURATION
+# 2. DUAL API CONFIGURATION SAFETY GATES
 # =====================================================
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY") or os.environ.get("OPENROUTER_API_KEY")
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
@@ -22,127 +26,140 @@ PUSHOVER_USER_KEY = st.secrets.get("PUSHOVER_USER_KEY")
 PUSHOVER_APP_TOKEN = st.secrets.get("PUSHOVER_APP_TOKEN")
 
 if not OPENROUTER_API_KEY or not OPENAI_API_KEY:
-    st.error("Missing required API credentials.")
+    st.error("Missing required API credentials in Streamlit Secrets. Ensure both OPENROUTER_API_KEY and OPENAI_API_KEY are configured.")
     st.stop()
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# Initialize OpenAI Client strictly for high-dimensional semantic embeddings
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
+# Vector File Paths for Persistent Storage on the Server
 INDEX_PATH = "faiss_index.bin"
 METADATA_PATH = "faiss_metadata.json"
 
 # =====================================================
-# 3. SAFETY & CONTEXT STATE
+# 3. SAFETY GUARDRAIL PARAMETERS (UPDATED BENCHMARKS)
 # =====================================================
-COOLDOWN_SECONDS = 5
-MAX_QUERY_CHARACTERS = 400
-DAILY_TOKEN_BUDGET = 450000
+COOLDOWN_SECONDS = 5        # Minimum wait time between consecutive submissions
+MAX_QUERY_CHARACTERS = 400  # Max size allowed for a single question
+DAILY_TOKEN_BUDGET = 450000 # Emergency circuit breaker for exactly 50 lookups a day
 
-if "documents" not in st.session_state: st.session_state.documents = []
-if "last_query_time" not in st.session_state: st.session_state.last_query_time = 0.0
-if "daily_token_consumption" not in st.session_state: st.session_state.daily_token_consumption = 0
-if "active_engine" not in st.session_state: st.session_state.active_engine = None
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": "Hello. Please tell me which engine you are working on: 912UL, 912ULS, 912iS, 914, 915iS or 916iS in order for me to help."}]
+# =====================================================
+# 4. SESSION STATE INITIALIZATION
+# =====================================================
+if "documents" not in st.session_state:
+    st.session_state.documents = []
 
-# Initialize vector index
+# Rate Limiting & Alert State Trackers
+if "last_query_time" not in st.session_state:
+    st.session_state.last_query_time = 0.0
+
+if "daily_token_consumption" not in st.session_state:
+    st.session_state.daily_token_consumption = 0
+
+if "alert_triggered_today" not in st.session_state:
+    st.session_state.alert_triggered_today = False
+
+if "active_engine" not in st.session_state:
+    st.session_state.active_engine = None
+
+# Load local vector index into live container memory on startup if it exists
 if "vector_index" not in st.session_state:
     if os.path.exists(INDEX_PATH) and os.path.exists(METADATA_PATH):
         try:
             st.session_state.vector_index = faiss.read_index(INDEX_PATH)
-            with open(METADATA_PATH, "r", encoding="utf-8") as f: st.session_state.vector_metadata = json.load(f)
-        except:
+            with open(METADATA_PATH, "r", encoding="utf-8") as f:
+                st.session_state.vector_metadata = json.load(f)
+            st.session_state.documents = list(set(m["source"] for m in st.session_state.vector_metadata))
+        except Exception:
             st.session_state.vector_index = None
             st.session_state.vector_metadata = []
     else:
         st.session_state.vector_index = None
         st.session_state.vector_metadata = []
 
+if "messages" not in st.session_state:
+    st.session_state.messages = [
+        {
+            "role": "assistant",
+            "content": "Hello. True semantic vector production engine active. Engine context must be specified to initialize workspace panels."
+        }
+    ]
+
+if "pending_clarification" not in st.session_state:
+    st.session_state.pending_clarification = None
+
 # =====================================================
-# 4. ENGINE & ALERT FUNCTIONS
+# 5. TECHNICAL SAFETY LAYERS & CORE ENGINES
 # =====================================================
-def get_embedding(text):
-    response = openai_client.embeddings.create(input=[text.replace("\n", " ")], model="text-embedding-3-small")
+def requires_variant(query: str) -> bool:
+    q = query.lower().replace(" ", "").replace("-", "")
+    return "912" in q and not any(v in q for v in ["uls", "ul", "is"])
+
+def invalid_configuration(query: str) -> bool:
+    q = query.lower().replace(" ", "").replace("-", "")
+    carb_terms = ["carb", "sync", "balance", "float", "choke"]
+    injected_engines = ["915", "916", "912is"]
+    
+    is_carb_query = any(t in q for t in carb_terms)
+    is_injected = any(e in q for e in injected_engines)
+    return is_carb_query and is_injected
+
+# Helper: Request Dense Vector Coordinates from OpenAI Embeddings Engine
+def get_embedding(text: str, model="text-embedding-3-small"):
+    cleaned_text = text.replace("\n", " ")
+    response = openai_client.embeddings.create(input=[cleaned_text], model=model)
     return response.data[0].embedding
 
-def send_pushover_alert(title, message):
-    if not PUSHOVER_USER_KEY or not PUSHOVER_APP_TOKEN: return
-    requests.post("https://api.pushover.net/1/messages.json", data={
-        "token": PUSHOVER_APP_TOKEN, "user": PUSHOVER_USER_KEY,
-        "title": title, "message": message, "priority": 1, "sound": "siren"
-    })
+# Helper: Professional Grade Pushover Notification Delivery Engine
+def send_pushover_alert(title: str, message: str):
+    if not PUSHOVER_USER_KEY or not PUSHOVER_APP_TOKEN:
+        return
+    try:
+        url = "https://api.pushover.net/1/messages.json"
+        payload = {
+            "token": PUSHOVER_APP_TOKEN,
+            "user": PUSHOVER_USER_KEY,
+            "title": title,
+            "message": message,
+            "priority": 1,
+            "sound": "siren"
+        }
+        requests.post(url, data=payload, timeout=10)
+    except Exception:
+        pass
 
 # =====================================================
-# 5. DOCUMENT INGESTION
+# 6. DOCUMENT INGESTION & VECTOR MATRIX BUILDER
 # =====================================================
 def rebuild_vector_database(uploaded_files):
     all_chunks = []
+    
     for uploaded_file in uploaded_files:
-        reader = PdfReader(uploaded_file)
-        for page_num, page in enumerate(reader.pages):
-            text = page.extract_text()
-            if text and len(text.strip()) > 50:
-                all_chunks.append({"text": text, "source": uploaded_file.name, "page": page_num + 1})
-    
-    embeddings = [get_embedding(c["text"]) for c in all_chunks]
-    index = faiss.IndexFlatL2(len(embeddings[0]))
-    index.add(np.array(embeddings).astype('float32'))
-    
-    faiss.write_index(index, INDEX_PATH)
-    with open(METADATA_PATH, "w", encoding="utf-8") as f: json.dump(all_chunks, f)
-    
-    st.session_state.vector_index = index
-    st.session_state.vector_metadata = all_chunks
-    st.rerun()
-
-# =====================================================
-# 6. MAIN CHAT & CONTEXT GATE
-# =====================================================
-st.title("Otimo Aero")
-st.subheader(f"Engine Context: {st.session_state.active_engine if st.session_state.active_engine else 'NOT SET'}")
-
-with st.sidebar:
-    st.progress(min(st.session_state.daily_token_consumption / DAILY_TOKEN_BUDGET, 1.0))
-    st.caption(f"Tokens: {st.session_state.daily_token_consumption} / {DAILY_TOKEN_BUDGET}")
-    uploaded_files = st.file_uploader("Upload Manuals", type=["pdf"], accept_multiple_files=True)
-    if uploaded_files: rebuild_vector_database(uploaded_files)
-
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]): st.write(message["content"])
-
-user_query = st.chat_input("Enter technical query...")
-
-if user_query:
-    # 1. ENGINE CONTEXT GATE
-    if st.session_state.active_engine is None:
-        if any(x in user_query.upper() for x in ["912", "915", "914"]):
-            st.session_state.active_engine = user_query.strip().upper()
-            st.rerun()
-        else:
-            with st.chat_message("assistant"): st.write("### 🔍 Which engine are you enquiring about today?")
-            st.stop()
-
-    # 2. BUDGET GUARDRAIL
-    if st.session_state.daily_token_consumption >= DAILY_TOKEN_BUDGET:
-        send_pushover_alert("🚨 SHUTDOWN", "Daily budget hit.")
-        st.error("🚨 EMERGENCY SHUTDOWN: Limit reached.")
-        st.stop()
-
-    # 3. LLM SEARCH LOGIC
-    with st.chat_message("assistant"):
-        with st.spinner("Scanning context..."):
-            query_vector = np.array([get_embedding(user_query)]).astype('float32')
-            _, indices = st.session_state.vector_index.search(query_vector, 5)
-            context = "\n\n".join([st.session_state.vector_metadata[i]["text"] for i in indices[0]])
+        try:
+            reader = PdfReader(uploaded_file)
+            for page_num, page in enumerate(reader.pages):
+                page_text = page.extract_text()
+                if page_text and len(page_text.strip()) > 50:
+                    all_chunks.append({
+                        "text": page_text,
+                        "source": uploaded_file.name,
+                        "page": page_num + 1
+                    })
+        except Exception as e:
+            st.error(f"Error parsing {uploaded_file.name}: {str(e)}")
             
-            st.session_state.daily_token_consumption += 9000
-            
-            final_prompt = f"Supporting technician on {st.session_state.active_engine}. Context: {context}. User asks: {user_query}"
-            
-            response = requests.post(OPENROUTER_URL, headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"}, 
-                                    json={"model": "meta-llama/llama-3.1-8b-instruct", "messages": [{"role": "user", "content": final_prompt}]})
-            
-            answer = response.json()["choices"][0]["message"]["content"]
-            st.write(answer)
-            st.session_state.messages.append({"role": "user", "content": user_query})
-            st.session_state.messages.append({"role": "assistant", "content": answer})
+    if all_chunks:
+        embeddings_list = []
+        metadata_list = []
+        progress_bar = st.progress(0)
+        st.write(f"Vectorising {len(all_chunks)} manual pages via OpenAI API...")
+        
+        for idx, chunk in enumerate(all_chunks):
+            try:
+                vec = get_embedding(chunk["text"])
+                embeddings_list.append(vec)
+                metadata_list.append(chunk)
+            except Exception as api_err:
+                st.error(f"Embedding failure on page unit
