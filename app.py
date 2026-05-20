@@ -2,11 +2,7 @@ import streamlit as st
 from pypdf import PdfReader
 import os
 import re
-import json
 import requests
-import numpy as np
-from openai import OpenAI
-import faiss
 
 # 1. Page Configuration
 st.set_page_config(
@@ -15,131 +11,73 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Configure Dual API Keys Safety Gates
+# 2. Configure Single OpenRouter API Key Safety Gate
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY") or os.environ.get("OPENROUTER_API_KEY")
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
 
-if not OPENROUTER_API_KEY or not OPENAI_API_KEY:
-    st.error("Missing required API credentials in Streamlit Secrets. Ensure both OPENROUTER_API_KEY and OPENAI_API_KEY are configured.")
+if not OPENROUTER_API_KEY:
+    st.error("Missing OPENROUTER_API_KEY in Streamlit Secrets. Please add it to your app settings.")
     st.stop()
 
-# Initialize OpenAI Client for Universal Semantic Embeddings
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
-
-# Index File Paths for Persistent Storage
-INDEX_PATH = "faiss_index.bin"
-METADATA_PATH = "faiss_metadata.json"
-
-# Helper: Semantic Text Chunking Engine
-def chunk_text(text, source_name, chunk_size=800, overlap=150):
-    words = text.split()
-    chunks = []
-    i = 0
-    while i < len(words):
-        chunk_words = words[i:i + chunk_size]
-        chunk_text = " ".join(chunk_words)
-        chunks.append({
-            "text": chunk_text,
-            "source": source_name
-        })
-        i += (chunk_size - overlap)
-    return chunks
-
-# Helper: Fetch Dense Vector Coordinates from OpenAI
-def get_embedding(text, model="text-embedding-3-small"):
-    cleaned_text = text.replace("\n", " ")
-    response = openai_client.embeddings.create(input=[cleaned_text], model=model)
-    return response.data[0].embedding
+# Helper: Tokenize text into clean lowercase alphanumeric tokens
+def tokenize(text):
+    return set(re.findall(r'\b[a-z0-9]{3,20}\b', text.lower()))
 
 # 3. Dynamic Access Control & Ingestion Core (URL ?admin=true)
 is_admin = st.query_params.get("admin") == "true"
 
-# Load Index & Metadata into Memory on Startup if they exist
-if "vector_index" not in st.session_state:
-    if os.path.exists(INDEX_PATH) and os.path.exists(METADATA_PATH):
-        try:
-            st.session_state.vector_index = faiss.read_index(INDEX_PATH)
-            with open(METADATA_PATH, "r", encoding="utf-8") as f:
-                st.session_state.vector_metadata = json.load(f)
-        except Exception:
-            st.session_state.vector_index = None
-            st.session_state.vector_metadata = []
-    else:
-        st.session_state.vector_index = None
-        st.session_state.vector_metadata = []
+if "document_registry" not in st.session_state:
+    st.session_state.document_registry = []
+if "uploaded_filenames" not in st.session_state:
+    st.session_state.uploaded_filenames = []
 
 if is_admin:
     with st.sidebar:
-        st.header("Admin Control: Vector Desk")
+        st.header("Admin Control: Reference Desk")
         st.write("Upload or refresh your technical library manuals here.")
         uploaded_files = st.file_uploader("Upload Manuals (PDF)", type=["pdf"], accept_multiple_files=True)
         
-        # Clear database if files are removed entirely from the tray
-        if not uploaded_files and st.session_state.vector_metadata:
-            if os.path.exists(INDEX_PATH): os.remove(INDEX_PATH)
-            if os.path.exists(METADATA_PATH): os.remove(METADATA_PATH)
-            st.session_state.vector_index = None
-            st.session_state.vector_metadata = []
+        # Reset local cache if files are cleared from the tray
+        if not uploaded_files and st.session_state.uploaded_filenames:
+            st.session_state.document_registry = []
+            st.session_state.uploaded_filenames = []
             st.rerun()
 
         if uploaded_files:
-            existing_sources = set(m["source"].split(" (Page")[0] for m in st.session_state.vector_metadata)
-            current_uploads = set(f.name for f in uploaded_files)
-            
-            if current_uploads != existing_sources:
-                with st.spinner("Processing deep vectorization across library..."):
-                    all_chunks = []
-                    for uploaded_file in uploaded_files:
+            current_names = [f.name for f in uploaded_files]
+            if any(name not in current_names for name in st.session_state.uploaded_filenames):
+                st.session_state.document_registry = []
+                st.session_state.uploaded_filenames = []
+                
+            new_files = [f for f in uploaded_files if f.name not in st.session_state.uploaded_filenames]
+            if new_files:
+                with st.spinner("Indexing manual text streams..."):
+                    for uploaded_file in new_files:
                         try:
                             reader = PdfReader(uploaded_file)
                             for page_num, page in enumerate(reader.pages):
                                 page_text = page.extract_text()
                                 if page_text and len(page_text.strip()) > 50:
-                                    file_label = f"{uploaded_file.name} (Page {page_num + 1})"
-                                    all_chunks.extend(chunk_text(page_text, file_label))
+                                    st.session_state.document_registry.append({
+                                        "text": page_text,
+                                        "tokens": tokenize(page_text),
+                                        "source": f"{uploaded_file.name} (Page {page_num + 1})"
+                                    })
+                            st.session_state.uploaded_filenames.append(uploaded_file.name)
                         except Exception as e:
                             st.error(f"Error parsing {uploaded_file.name}: {str(e)}")
-                    
-                    if all_chunks:
-                        embeddings_list = []
-                        metadata_list = []
-                        progress_bar = st.progress(0)
-                        
-                        for idx, chunk in enumerate(all_chunks):
-                            try:
-                                vec = get_embedding(chunk["text"])
-                                embeddings_list.append(vec)
-                                metadata_list.append(chunk)
-                            except Exception as api_err:
-                                st.error(f"Embedding failure on chunk {idx}: {str(api_err)}")
-                            progress_bar.progress((idx + 1) / len(all_chunks))
-                        
-                        if embeddings_list:
-                            dimension = len(embeddings_list[0])
-                            np_embeddings = np.array(embeddings_list).astype('float32')
-                            
-                            index = faiss.IndexFlatL2(dimension)
-                            index.add(np_embeddings)
-                            
-                            faiss.write_index(index, INDEX_PATH)
-                            with open(METADATA_PATH, "w", encoding="utf-8") as f:
-                                json.dump(metadata_list, f, ensure_ascii=False, indent=2)
-                                
-                            st.session_state.vector_index = index
-                            st.session_state.vector_metadata = metadata_list
-                            st.success(f"Successfully vectorized {len(current_uploads)} manuals into permanent memory!")
-                            st.rerun()
+                    st.success(f"Successfully indexed {len(st.session_state.uploaded_filenames)} manuals!")
+                    st.rerun()
 
 # 4. App Header & Branding
 st.title("Otimo Aero")
-st.subheader("Technical Support Desk (Dense Vector RAG Production Engine)")
+st.subheader("Technical Support Desk (Single-API Production Engine)")
 
 # 5. Initialize Chat History & Context Memory State
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant", 
-            "content": "Hello. Vectorized production engine active. Enter your technical query below for high-fidelity maintenance support."
+            "content": "Hello. Production engine active. Enter your technical query below for high-fidelity maintenance support."
         }
     ]
 if "pending_clarification" not in st.session_state:
@@ -196,41 +134,33 @@ To provide the correct technical clearances or procedure parameters, please spec
             response_placeholder.write(assistant_response)
             st.session_state.messages.append({"role": "assistant", "content": assistant_response})
         
-        # SCENARIO C: Standard Vector-Search Path
+        # SCENARIO C: Universal Multi-Pass Search
         else:
-            with st.spinner("Executing mathematical spatial context scan..."):
+            with st.spinner("Analyzing manual layout filters..."):
                 try:
-                    context_str = "No directly matching documentation found in database."
+                    query_tokens = tokenize(user_query)
+                    matched_pages = []
                     
-                    if st.session_state.vector_index is not None and len(st.session_state.vector_metadata) > 0:
-                        # Vectorize the user's incoming query string
-                        query_vector = np.array([get_embedding(user_query)]).astype('float32')
-                        
-                        # Query the FAISS index for the 6 closest matching chunks mathematically
-                        distances, indices = st.session_state.vector_index.search(query_vector, 6)
-                        
-                        matched_chunks = []
-                        for score, idx in zip(distances[0], indices[0]):
-                            # Clean syntactic gate for matching indexes
-                            if idx != -1 and idx < len(st.session_state.vector_metadata):
-                                # ENFORCE AMBIGUITY GATE: If geometric similarity distance is too wide,
-                                # treat chunk as background noise to prevent hallucinations.
-                                if score < 1.2: 
-                                    chunk_data = st.session_state.vector_metadata[idx]
-                                    matched_chunks.append(f"Source: {chunk_data['source']}\nContent: {chunk_data['text']}")
-                        
-                        if matched_chunks:
-                            context_str = "\n\n---\n\n".join(matched_chunks)
+                    # Core Action Words Extraction (e.g., "synchronization", "torque", "clearance")
+                    # Words that appear rarely across manuals but signify specific tasks
+                    for item in st.session_state.document_registry:
+                        intersect_count = len(query_tokens.intersection(item["tokens"]))
+                        if intersect_count > 0:
+                            matched_pages.append((intersect_count, item["text"], item["source"]))
                     
-                    # Direct System prompt configuration with ironclad guardrails
-                    full_prompt = f"""You are the technical AI desk assistant for Otimo Aero, indexing official technical aircraft documentation.
+                    # Sort by pure keyword matches, pulling top pages for the context window
+                    matched_pages.sort(key=lambda x: x[0], reverse=True)
+                    top_context = [f"Source: {source}\nContent: {text}" for count, text, source in matched_pages[:12]]
+                    context_str = "\n\n---\n\n".join(top_context) if top_context else "No matching manual context found."
+                    
+                    # Strict System prompt enforcing the Ambiguity Guard directly inside the premium model node
+                    full_prompt = f"""You are the lead technical AI desk assistant for Otimo Aero, indexing official multi-manual aircraft documentation.
 You output answers in a strict, professional, itemized layout. No conversational fluff, assumptions, or external baseline guesses.
 
 CRITICAL DISCIPLINE DIRECTIVE FOR AIRWORTHINESS SAFETY:
 * You must answer the user's question relying EXCLUSIVELY on the provided manual extracts below.
-* IF THE USER'S PROMPT IS AMBIGUOUS, OR IF THE PROVIDED EXTRACTS DO NOT CONTAIN AN EXACT, DEFINITIVE, UNAMBIGUOUS PROCEDURE MATCH FOR THE SPECIFIC SYSTEM ENQUIRED ABOUT, YOU MUST STOP.
-* If there is any ambiguity, you must NOT provide generic steps. Instead, use section 1 to ask a highly specific technical clarifying question to narrow down the precise component reference, chapter title, or parameter needed.
-* DO NOT ask the user for an engine serial number unless it is explicitly requested by the text for safety tolerances. The model variant provided by the user is sufficient.
+* IF THE USER'S PROMPT IS AMBIGUOUS, OR IF THE PROVIDED EXTRACTS DO NOT CONTAIN AN EXACT, DEFINITIVE, UNAMBIGUOUS PROCEDURE MATCH FOR THE SPECIFIC SYSTEM ENQUIRED ABOUT, YOU MUST IMMEDIATELY HALT.
+* If there is any ambiguity or data insufficiency, you must NOT provide generic steps. Instead, use section 1 to ask a highly specific technical clarifying question to narrow down the precise component reference, manual section, or model parameter needed.
 
 Structure your response exactly like this:
 

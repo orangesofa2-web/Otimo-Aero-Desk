@@ -1,6 +1,3 @@
 streamlit
 pypdf
 requests
-openai
-faiss-cpu
-numpy
