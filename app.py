@@ -138,4 +138,83 @@ To provide the correct technical clearances or procedure parameters, please spec
             with st.spinner("Analyzing manual layout filters..."):
                 try:
                     # Filter out generic model keywords from the ranking math to stop context dilution
-                    raw_tokens = tokenize(
+                    raw_tokens = tokenize(user_query)
+                    noise_terms = {"912", "uls", "ul", "series", "type", "rotax", "engine"}
+                    important_tokens = [t for t in raw_tokens if t not in noise_terms]
+                    
+                    if not important_tokens:
+                        important_tokens = raw_tokens
+
+                    matched_pages = []
+                    for item in st.session_state.document_registry:
+                        text_lower = item["text"].lower()
+                        
+                        # High priority given to unique actions (e.g., synchronization, clearance, torque)
+                        action_hits = sum(10.0 for token in important_tokens if token in text_lower)
+                        # Low baseline priority for generic model terms
+                        model_hits = sum(0.1 for token in raw_tokens if token in text_lower and token in noise_terms)
+                        
+                        total_score = action_hits + model_hits
+                        if total_score > 0:
+                            matched_pages.append((total_score, item["text"], item["source"]))
+                    
+                    # Sort strictly by technical task relevance and grab the top 12 pages
+                    matched_pages.sort(key=lambda x: x[0], reverse=True)
+                    top_context = [f"Source: {source}\nContent: {text}" for score, text, source in matched_pages[:12]]
+                    context_str = "\n\n---\n\n".join(top_context) if top_context else "No matching manual context found."
+                    
+                    # Redesigned prompt forcing active step delivery instead of general reference shortcuts
+                    full_prompt = f"""You are the lead technical AI desk assistant for Otimo Aero, providing maintenance support directly to technicians working on aircraft.
+You output answers in a strict, professional, itemized layout. No conversational fluff, meta-references, or unhelpful remarks.
+
+CRITICAL DISCIPLINE DIRECTIVE FOR TECHNICAL SUPPORT:
+1. Your primary purpose is to help the user complete maintenance tasks SAFELY and SUCCESSFUL right now. 
+2. NEVER copy or output generic sentences that tell the user to "refer to the maintenance manual" or "see Chapter X". You are their interface to the manual. You must extract and output the actual, physical, sequential step-by-step instructions contained in the text.
+3. If the provided manual extracts contain the actual steps, tolerances, clearances, or values, you MUST write them out in explicit detail under Section 1 so the technician can complete the activity without opening another file.
+4. IF AND ONLY IF the explicit step-by-step physical procedure or target values are entirely absent or cut off within the extracts below, you must NOT invent data or give vague summaries. Instead, use Section 1 to ask a simple, precise clarifying question to get the missing context or component name needed to pull the correct pages.
+
+Structure your response exactly like this:
+
+### 1. QUICK SPEC / PROCEDURE
+* Provide the concrete, sequential maintenance steps, checks, settings, or technical values extracted from the text below. Write them out fully so the technician can perform the work safely.
+* If the task text is missing from the extracts, explicitly ask a clear technical clarifying question to narrow down the missing details.
+
+### 2. PARTS & MANUAL DATA
+* List specific part numbers, tool codes, or official manual chapter titles explicitly extracted from the text.
+* If missing due to text gaps, state: "Clarification required from user".
+
+---
+MANUAL EXTRACTS:
+{context_str}
+---
+USER QUESTION: {user_query}"""
+
+                    url = "https://openrouter.ai/api/v1/chat/completions"
+                    headers = {
+                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                        "Content-Type": "application/json"
+                    }
+                    
+                    data = {
+                        "model": "meta-llama/llama-3.1-8b-instruct",
+                        "messages": [{"role": "user", "content": full_prompt}],
+                        "temperature": 0.0,
+                        "providers": {
+                            "order": ["Lepton", "Together"],
+                            "allow_fallbacks": True
+                        }
+                    }
+                    
+                    res = requests.post(url, json=data, headers=headers)
+                    if res.status_code == 200:
+                        assistant_response = res.json()["choices"][0]["message"]["content"]
+                        response_placeholder.write(assistant_response)
+                    else:
+                        assistant_response = f"OpenRouter Connection Error ({res.status_code}): {res.text}"
+                        response_placeholder.error(assistant_response)
+                        
+                except Exception as e:
+                    assistant_response = f"An error occurred: {str(e)}"
+                    response_placeholder.error(assistant_response)
+                    
+            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
