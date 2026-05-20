@@ -37,7 +37,6 @@ def score_chunk_universally(chunk_profile, query_profile):
     score = sum(chunk_profile[token] * query_profile[token] for token in intersection)
     return score
 
-# FIXED: Increased chunk size to 1000 words to ensure complete manual tables/data sheets stay intact
 def split_into_chunks(text, size=1000):
     words = text.split()
     return [" ".join(words[i:i + size]) for i in range(0, len(words), size)]
@@ -91,8 +90,8 @@ with st.sidebar:
             st.success(f"Indexed {len(st.session_state.uploaded_filenames)} files!")
 
 # 4. App Header & Branding
-st.title("Otimo Aero")
-st.subheader("Technical Support Desk v2")
+st.title("Otimo Aero AI")
+st.subheader("Technical Support Agent v2")
 
 # 5. Initialize Chat History
 if "messages" not in st.session_state:
@@ -121,7 +120,27 @@ if user_query := st.chat_input("Enter your technical question here..."):
             try:
                 model = genai.GenerativeModel("gemini-2.5-flash")
                 
-                query_profile = get_text_profile(user_query)
+                # FIXED: Condense query based on history so follow-ups map back to the primary technical subject
+                history_context = ""
+                if len(st.session_state.messages) > 2:
+                    recent_messages = st.session_state.messages[-3:-1]
+                    history_context = "\n".join([f"{m['role']}: {m['content']}" for m in recent_messages])
+                
+                condensation_prompt = f"""
+                Given the following brief exchange history and a new technical question, rewrite the question into a single search query that includes missing technical subjects (e.g., specific parts, components, systems). Do not answer it.
+                
+                HISTORY:
+                {history_context}
+                
+                NEW QUESTION: {user_query}
+                
+                Optimized Search Query:"""
+                
+                condensed_query_resp = model.generate_content(condensation_prompt)
+                search_query = condensed_query_resp.text.strip()
+                
+                # Grade all chunks using the contextual search query
+                query_profile = get_text_profile(search_query)
                 scored_chunks = []
                 
                 for item in st.session_state.document_registry:
@@ -129,12 +148,11 @@ if user_query := st.chat_input("Enter your technical question here..."):
                     if score > 0:
                         scored_chunks.append((score, item["text"]))
                 
-                # FIXED: Increased window to top 10 segments so no engineering cross-references get truncated
                 scored_chunks.sort(key=lambda x: x[0], reverse=True)
                 top_context = [chunk for score, chunk in scored_chunks[:10]]
                 context_str = "\n---\n".join(top_context)
                 
-                # FIXED: Upgraded instructions allowing immediate baseline answers when files use variant naming
+                # Sharp, ultra-concise prompt structure using direct bullet points
                 full_prompt = f"""
                 You are the expert AI technical assistant for Otimo Aero. 
                 You must be extremely concise, direct, and practical. No conversational filler or fluff.
@@ -150,7 +168,7 @@ if user_query := st.chat_input("Enter your technical question here..."):
                 * If the specific part/paste name isn't explicitly mentioned in the text, state "Not in uploaded files" and immediately provide the industry/manufacturer baseline part number or spec anyway.
                 
                 ---
-                MANUAL EXTRACTS:
+                MANUAL EXTRACTS (Searched for: "{search_query}"):
                 {context_str if context_str else 'No direct documentation matches.'}
                 ---
                 
