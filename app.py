@@ -90,8 +90,8 @@ with st.sidebar:
             st.success(f"Indexed {len(st.session_state.uploaded_filenames)} files!")
 
 # 4. App Header & Branding
-st.title("Otimo Aero AI")
-st.subheader("Technical Support Agent v2")
+st.title("Otimo Aero")
+st.subheader("Technical Support Desk (Universal Semantic Engine)")
 
 # 5. Initialize Chat History
 if "messages" not in st.session_state:
@@ -120,29 +120,17 @@ if user_query := st.chat_input("Enter your technical question here..."):
             try:
                 model = genai.GenerativeModel("gemini-2.5-flash")
                 
-                # FIXED: Condense query based on history so follow-ups map back to the primary technical subject
+                # Fetch recent chat context strings locally
                 history_context = ""
                 if len(st.session_state.messages) > 2:
                     recent_messages = st.session_state.messages[-3:-1]
-                    history_context = "\n".join([f"{m['role']}: {m['content']}" for m in recent_messages])
+                    history_context = " ".join([m['content'] for m in recent_messages])
                 
-                condensation_prompt = f"""
-                Given the following brief exchange history and a new technical question, rewrite the question into a single search query that includes missing technical subjects (e.g., specific parts, components, systems). Do not answer it.
+                # Combine user question with recent history keywords locally to maintain topic continuity
+                combined_search_terms = f"{user_query} {history_context}"
+                query_profile = get_text_profile(combined_search_terms)
                 
-                HISTORY:
-                {history_context}
-                
-                NEW QUESTION: {user_query}
-                
-                Optimized Search Query:"""
-                
-                condensed_query_resp = model.generate_content(condensation_prompt)
-                search_query = condensed_query_resp.text.strip()
-                
-                # Grade all chunks using the contextual search query
-                query_profile = get_text_profile(search_query)
                 scored_chunks = []
-                
                 for item in st.session_state.document_registry:
                     score = score_chunk_universally(item["profile"], query_profile)
                     if score > 0:
@@ -152,10 +140,12 @@ if user_query := st.chat_input("Enter your technical question here..."):
                 top_context = [chunk for score, chunk in scored_chunks[:10]]
                 context_str = "\n---\n".join(top_context)
                 
-                # Sharp, ultra-concise prompt structure using direct bullet points
+                # Full response instructions. Handles conversation flow and manual parsing in ONE single call.
                 full_prompt = f"""
                 You are the expert AI technical assistant for Otimo Aero. 
                 You must be extremely concise, direct, and practical. No conversational filler or fluff.
+                
+                Contextual awareness: Resolve pronoun references (like "it", "this", "which paste") using the context history below.
                 
                 Structure your answer exactly like this:
                 
@@ -168,13 +158,17 @@ if user_query := st.chat_input("Enter your technical question here..."):
                 * If the specific part/paste name isn't explicitly mentioned in the text, state "Not in uploaded files" and immediately provide the industry/manufacturer baseline part number or spec anyway.
                 
                 ---
-                MANUAL EXTRACTS (Searched for: "{search_query}"):
+                RECENT RELEVANT CHAT HISTORY:
+                {history_context if history_context else 'No prior history.'}
+                ---
+                MANUAL EXTRACTS:
                 {context_str if context_str else 'No direct documentation matches.'}
                 ---
                 
                 USER QUESTION: {user_query}
                 """
                 
+                # Single request execution to guarantee we stay safely below the 5 RPM limit
                 response = model.generate_content(full_prompt, generation_config={"temperature": 0.2})
                 assistant_response = response.text
                 response_placeholder.write(assistant_response)
