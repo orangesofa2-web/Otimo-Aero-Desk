@@ -1,9 +1,9 @@
 import streamlit as st
-import google.generativeai as genai
 from pypdf import PdfReader
 import os
 import re
 from collections import Counter
+import requests
 
 # 1. Page Configuration
 st.set_page_config(
@@ -12,13 +12,15 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Configure Gemini API
-if "GEMINI_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-elif os.environ.get("GEMINI_API_KEY"):
-    genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
-else:
-    st.error("Missing Gemini API Key. Please add it to your Streamlit Secrets.")
+# 2. Configure OpenRouter API Key (Paid Unthrottled Production Tier)
+OPENROUTER_API_KEY = ""
+if "OPENROUTER_API_KEY" in st.secrets:
+    OPENROUTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
+elif os.environ.get("OPENROUTER_API_KEY"):
+    OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+
+if not OPENROUTER_API_KEY:
+    st.error("Missing OPENROUTER_API_KEY in Streamlit Secrets. Please add it to your app settings.")
     st.stop()
 
 # Helper: Clean text into character-grams to extract root meanings across technical terms
@@ -91,14 +93,14 @@ with st.sidebar:
 
 # 4. App Header & Branding
 st.title("Otimo Aero")
-st.subheader("Technical Support Desk (Universal Semantic Engine)")
+st.subheader("Technical Support Desk (OpenRouter Production Engine)")
 
 # 5. Initialize Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant", 
-            "content": "Hello. Local semantic engine ready. Drop maintenance books or specs in the sidebar for concise, direct answers."
+            "content": "Hello. Production engine active. Drop your manuals in the sidebar for unthrottled, precise maintenance support."
         }
     ]
 
@@ -116,17 +118,14 @@ if user_query := st.chat_input("Enter your technical question here..."):
     
     with st.chat_message("assistant"):
         response_placeholder = st.empty()
-        with st.spinner("Extracting matching data segments..."):
+        with st.spinner("Processing request via production gateway..."):
             try:
-                model = genai.GenerativeModel("gemini-2.5-flash")
-                
-                # Fetch recent chat context strings locally
+                # Maintain conversation continuity across follow-up queries locally
                 history_context = ""
                 if len(st.session_state.messages) > 2:
                     recent_messages = st.session_state.messages[-3:-1]
                     history_context = " ".join([m['content'] for m in recent_messages])
                 
-                # Combine user question with recent history keywords locally to maintain topic continuity
                 combined_search_terms = f"{user_query} {history_context}"
                 query_profile = get_text_profile(combined_search_terms)
                 
@@ -140,7 +139,7 @@ if user_query := st.chat_input("Enter your technical question here..."):
                 top_context = [chunk for score, chunk in scored_chunks[:10]]
                 context_str = "\n---\n".join(top_context)
                 
-                # Full response instructions. Handles conversation flow and manual parsing in ONE single call.
+                # Production prompt architecture
                 full_prompt = f"""
                 You are the expert AI technical assistant for Otimo Aero. 
                 You must be extremely concise, direct, and practical. No conversational filler or fluff.
@@ -168,10 +167,26 @@ if user_query := st.chat_input("Enter your technical question here..."):
                 USER QUESTION: {user_query}
                 """
                 
-                # Single request execution to guarantee we stay safely below the 5 RPM limit
-                response = model.generate_content(full_prompt, generation_config={"temperature": 0.2})
-                assistant_response = response.text
-                response_placeholder.write(assistant_response)
+                # Route data to OpenRouter endpoint using the robust Llama 3.1 8B model
+                url = "https://openrouter.ai/api/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                    "Content-Type": "application/json"
+                }
+                data = {
+                    "model": "meta-llama/llama-3.1-8b-instruct",
+                    "messages": [{"role": "user", "content": full_prompt}],
+                    "temperature": 0.2
+                }
+                
+                res = requests.post(url, json=data, headers=headers)
+                
+                if res.status_code == 200:
+                    assistant_response = res.json()["choices"][0]["message"]["content"]
+                    response_placeholder.write(assistant_response)
+                else:
+                    assistant_response = f"OpenRouter Connection Error ({res.status_code}): {res.text}"
+                    response_placeholder.error(assistant_response)
                 
             except Exception as e:
                 assistant_response = f"An error occurred: {str(e)}"
