@@ -181,19 +181,20 @@ To provide the correct technical clearances or procedure parameters, please spec
                     top_context = [chunk for score, chunk in scored_chunks[:10]]
                     context_str = "\n---\n".join(top_context)
                     
-                    # Cleaned, structured system prompt with dynamic clarification mandate
+                    # Hardened system prompt with strict serial number ban
                     full_prompt = f"""You are the technical AI desk assistant for Otimo Aero, indexing official Rotax documentation.
 You output answers in a strict, professional, itemized layout. No conversational fluff, assumptions, or external baseline guesses.
 
 CRITICAL DISCIPLINE DIRECTIVE:
 * You must answer the user's question relying EXCLUSIVELY on the provided manual extracts below.
-* If the exact procedure, consumable name, part number, torque specification, or value is missing or unclear within the manual extracts below, you must NOT invent an answer. Instead, explicitly prompt the user for the specific missing parameter or additional information needed to isolate the correct data.
+* DO NOT ask the user for an engine serial number. The engine model variant (e.g., 912 ULS) provided is entirely sufficient. Look directly at the extracts for the parameters matching that model.
+* If the exact procedure, consumable name, part number, torque specification, or value is missing or unclear within the manual extracts below, you must NOT invent an answer. Instead, explicitly prompt the user for alternative keywords or related component titles to refine the document search.
 
 Structure your response exactly like this:
 
 ### 1. QUICK SPEC / PROCEDURE
 * Provide the direct maintenance steps or technical values extracted from the text below. 
-* If the text does not contain a definitive answer or is ambiguous, ask the user a specific clarifying question to narrow down the exact reference needed.
+* If the text does not contain a definitive answer or is ambiguous, ask the user a specific clarifying question to narrow down the exact component reference needed.
 
 ### 2. PARTS & MANUAL DATA
 * List specific part numbers, tool codes, or manual chapter titles extracted from the text.
@@ -210,10 +211,14 @@ USER QUESTION: {user_query}"""
                         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                         "Content-Type": "application/json"
                     }
+                    # SPECIFIED OVERRIDE: Using the explicit meta-llama production routing to utilize paid endpoints
                     data = {
                         "model": "meta-llama/llama-3.1-8b-instruct",
                         "messages": [{"role": "user", "content": full_prompt}],
-                        "temperature": 0.0
+                        "temperature": 0.0,
+                        "provider": {
+                            "allow_fallbacks": False
+                        }
                     }
                     
                     res = requests.post(url, json=data, headers=headers)
