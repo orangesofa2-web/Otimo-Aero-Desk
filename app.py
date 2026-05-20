@@ -18,7 +18,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Robust fallback selector overrides targeting inner and outer framework components of st.chat_input
+# Robust selector overrides targeting inner and outer framework components of st.chat_input
 st.markdown(
     """
     <style>
@@ -317,7 +317,6 @@ else:
 # =====================================================
 # 10. USER COMMAND RUNNER WITH ARCHITECTURE HOOKS
 # =====================================================
-# The dynamic selector queries in Section 1 maintain 70% width symmetry across user layout views
 user_query = st.chat_input("Enter technical maintenance question...")
 
 if user_query:
@@ -503,15 +502,17 @@ To provide the correct technical clearances or procedure parameters, please spec
 
                     final_prompt = f"""You are supporting a licensed aircraft maintenance technician.
 You must answer the user's question relying EXCLUSIVELY on the provided manual extracts below.
-You are explicitly assigned to find information for the following engine profile baseline: ROTAX {st.session_state.active_engine}.
-{topic_context_injection}
+
+CRITICAL WORKSPACE LIMITATION:
+You are explicitly assigned to find information ONLY for the following engine profile baseline: ROTAX {st.session_state.active_engine}.
+If the provided manual extracts contain text, tables, or notes that explicitly state they belong to a DIFFERENT engine type (e.g., if your active profile is 916IS, but the text says "for 912/914 Series only"), you must STRICTLY IGNORE and completely discard that data. Do not list those parts, specs, or troubleshooting notes anywhere in your response.
 
 CRITICAL DISCIPLINE DIRECTIVE FOR TECHNICAL SUPPORT:
 1. Your primary purpose is to help the user complete maintenance tasks SAFELY and SUCCESSFULLY right now. 
 2. NEVER copy or output generic sentences that tell the user to \"refer to the maintenance manual\" or \"see Chapter X\". You are their interface to the manual. You must extract and output the actual, physical, sequential step-by-step instructions contained in the text.
-3. If the provided manual extracts contain the actual steps, tolerances, clearances, or values, you MUST write them out in explicit detail under Section 1 so the technician can complete the activity without opening another file.
+3. If the provided manual extracts contain the actual steps, tolerances, clearances, or values for your active engine model, you MUST write them out in explicit detail under Section 1 so the technician can complete the activity without opening another file.
 4. STRICT FILTERING FOR SECTION 2: Do NOT dump generic parts lists, internal sub-components, or exploded-view catalogs (e.g., float pins, internal gaskets, tiny washers) unless the manual explicitly states they must be *replaced* or *installed* during this specific maintenance task. Focus exclusively on the external tools, gauges, consumables (like specified Loctite grades or oils), and major line kits required to perform the workflow.
-5. IF AND ONLY IF the explicit step-by-step physical procedure or target values are entirely absent or cut off within the extracts below, you must NOT invent data or give vague summaries. Instead, use Section 1 to ask a simple, precise clarifying question to get the missing context or component name needed to pull the correct pages.
+5. IF AND ONLY IF the explicit step-by-step physical procedure or target values for your specific active engine are entirely absent or cut off within the extracts below, you must NOT invent data or give vague summaries. Instead, use Section 1 to ask a simple, precise clarifying question to get the missing context or component name needed to pull the correct pages.
 
 Structure your response exactly like this:
 
