@@ -42,9 +42,9 @@ METADATA_PATH = "faiss_metadata.json"
 # =====================================================
 # 3. SAFETY GUARDRAIL PARAMETERS (UPDATED BENCHMARKS)
 # =====================================================
-COOLDOWN_SECONDS = 5        # Minimum wait time between consecutive submissions
-MAX_QUERY_CHARACTERS = 400  # Max size allowed for a single question
-DAILY_TOKEN_BUDGET = 450000 # Emergency circuit breaker for exactly 50 lookups a day
+COOLDOWN_SECONDS = 5
+MAX_QUERY_CHARACTERS = 400
+DAILY_TOKEN_BUDGET = 450000
 
 # =====================================================
 # 4. SESSION STATE INITIALIZATION
@@ -52,7 +52,6 @@ DAILY_TOKEN_BUDGET = 450000 # Emergency circuit breaker for exactly 50 lookups a
 if "documents" not in st.session_state:
     st.session_state.documents = []
 
-# Rate Limiting & Alert State Trackers
 if "last_query_time" not in st.session_state:
     st.session_state.last_query_time = 0.0
 
@@ -65,11 +64,9 @@ if "alert_triggered_today" not in st.session_state:
 if "active_engine" not in st.session_state:
     st.session_state.active_engine = None
 
-# Persistent Topic Tracker: Keeps the maintenance task locked in across turns
 if "active_topic" not in st.session_state:
     st.session_state.active_topic = None
 
-# Load local vector index into live container memory on startup if it exists
 if "vector_index" not in st.session_state:
     if os.path.exists(INDEX_PATH) and os.path.exists(METADATA_PATH):
         try:
@@ -84,10 +81,9 @@ if "vector_index" not in st.session_state:
         st.session_state.vector_index = None
         st.session_state.vector_metadata = []
 
-# STATIC PROMPT DECLARATION
 WELCOME_PROMPT = """### 🔧 Engine Selection Required
 
-Welcome to the workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration. 
+Welcome to the Otimo Aero workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration. 
 
 Critical parameters—such as plug gaps, line-purging steps, fuel pressures, and torque values—vary significantly across model variants. Setting this filter ensures the search engine safely targets the correct technical manual documentation.
 
@@ -99,15 +95,10 @@ Critical parameters—such as plug gaps, line-purging steps, fuel pressures, and
 * **915iS**
 * **916iS**
 
-*Type your matching engine key code below to open the maintenance desk channels.*"""
+*Type your matching engine model below to open the maintenance desk channels.*"""
 
 if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {
-            "role": "assistant",
-            "content": WELCOME_PROMPT
-        }
-    ]
+    st.session_state.messages = [{"role": "assistant", "content": WELCOME_PROMPT}]
 
 if "pending_clarification" not in st.session_state:
     st.session_state.pending_clarification = None
@@ -128,13 +119,11 @@ def invalid_configuration(query: str) -> bool:
     is_injected = any(e in q for e in injected_engines)
     return is_carb_query and is_injected
 
-# Helper: Request Dense Vector Coordinates from OpenAI Embeddings Engine
 def get_embedding(text: str, model="text-embedding-3-small"):
     cleaned_text = text.replace("\n", " ")
     response = openai_client.embeddings.create(input=[cleaned_text], model=model)
     return response.data[0].embedding
 
-# Helper: Professional Grade Pushover Notification Delivery Engine
 def send_pushover_alert(title: str, message: str):
     if not PUSHOVER_USER_KEY or not PUSHOVER_APP_TOKEN:
         return
@@ -301,6 +290,10 @@ if user_query:
     with st.chat_message("user"):
         st.write(user_query)
 
+    # TEST TRIGGER (Case-Insensitive Normalization Fix)
+    if user_query.strip().upper() == "TEST_ALERT_NOW":
+        st.session_state.daily_token_consumption = DAILY_TOKEN_BUDGET + 1000
+
     # ENGINE CONTEXT GATE
     if st.session_state.active_engine is None:
         engine_match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
@@ -330,10 +323,6 @@ if user_query:
         elif "carb" in user_query.lower() or "sync" in user_query.lower() or "balance" in user_query.lower():
             st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
 
-    # TEST TRIGGER
-    if user_query.strip() == "TEST_ALERT_NOW":
-        st.session_state.daily_token_consumption = DAILY_TOKEN_BUDGET + 1000
-
     # GUARDRAIL LAYER A: Cooldown Timer Enforcement
     if time_passed < COOLDOWN_SECONDS:
         wait_remainder = int(COOLDOWN_SECONDS - time_passed)
@@ -362,7 +351,7 @@ if user_query:
             )
             st.session_state.alert_triggered_today = True
 
-        error_msg = "🚨 **EMERGENCY SHUTDOWN:** The application has reached its maximum daily data allotment. API requests have been locked down to prevent balance exhaustion. Please check again tomorrow."
+        error_msg = "🚨 **EMERGENCY SHUTDOWN:** The Agent has reached its daily limit of questions. Please check again tomorrow."
         with st.chat_message("assistant"):
             st.error(error_msg)
         st.session_state.messages.append({"role": "user", "content": user_query})
