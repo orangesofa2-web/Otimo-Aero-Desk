@@ -67,7 +67,7 @@ MAX_QUERY_CHARACTERS = 400
 DAILY_TOKEN_BUDGET = 450000
 
 # =====================================================
-# 4. SESSION STATE INITIALIZATION
+# 4. SESSION STATE INITIALIZATION & DISCLAIMERS
 # =====================================================
 if "documents" not in st.session_state:
     st.session_state.documents = []
@@ -104,6 +104,9 @@ if "vector_index" not in st.session_state:
 WELCOME_PROMPT = """### 🔧 Engine Selection Required
 
 Welcome to the workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration. 
+
+> ⚠️ **IMPORTANT MAINTENANCE DIRECTIVE / TECHNICAL DISCLAIMER**
+> This AI system is highly experimental and serves strictly as an informational guide. Data extracted via neural networks may contain mapping errors or contextual gaps. All users must cross-reference and double-check instructions, tolerances, and part arrays against official hardcopy documentation before altering any flight system. If in any doubt regarding configuration safety, immediately stop work and contact a qualified iRMT (Independent Rotax Maintenance Technician).
 
 Critical parameters—such as plug gaps, line-purging steps, fuel pressures, and torque values—vary significantly across model variants. Setting this filter ensures the search engine safely targets the correct technical manual documentation.
 
@@ -475,6 +478,7 @@ To provide the correct technical clearances or procedure parameters, please spec
             with st.spinner("Executing mathematical spatial context scan..."):
                 try:
                     context_str = "No directly matching documentation found in database."
+                    source_citations = []
                     
                     # INJECT MEMORY INTO DATABASE LOOKUP
                     search_query = user_query
@@ -500,6 +504,10 @@ To provide the correct technical clearances or procedure parameters, please spec
                                 if score < 1.3:
                                     chunk_data = st.session_state.vector_metadata[idx]
                                     matched_chunks.append(f"Source: {chunk_data['source']} - Page {chunk_data['page']}\nContent: {chunk_data['text']}")
+                                    # Harvest unique document name and page indices for the automated footers
+                                    citation_entry = f"* Manual Document: `{chunk_data['source']}` — **Page {chunk_data['page']}**"
+                                    if citation_entry not in source_citations:
+                                        source_citations.append(citation_entry)
                         
                         if matched_chunks:
                             context_str = "\n\n---\n\n".join(matched_chunks)
@@ -548,6 +556,14 @@ MANUAL EXTRACTS:
 USER QUESTION: {user_query}"""
 
                     assistant_response = call_llm(final_prompt)
+                    
+                    # Dynamically construct the references footer segment if matching pages exist
+                    if source_citations:
+                        footer_block = "\n\n---\n\n### 📄 SOURCES & DOCUMENTATION REFERENCES\n"
+                        footer_block += "*To verify the safety limits or physical instructions provided above, crosscheck the following mapped manual chapters:*\n"
+                        footer_block += "\n".join(source_citations)
+                        assistant_response += footer_block
+                        
                     response_placeholder.write(assistant_response)
                     
                 except Exception as e:
