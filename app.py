@@ -10,7 +10,7 @@ import faiss
 import time
 
 # =====================================================
-# 1. PAGE CONFIGURATION
+# 1. PAGE CONFIGURATION & INJECTED STRUCTURAL CSS
 # =====================================================
 st.set_page_config(
     page_title="Otimo Aero AI Technician",
@@ -18,10 +18,18 @@ st.set_page_config(
     layout="wide"
 )
 
-# Injection of custom CSS to explicitly force the chat input area to stick to 70% centered layout width
+# Robust fallback selector overrides targeting inner and outer framework components of st.chat_input
 st.markdown(
     """
     <style>
+    /* Match the bottom input container strictly to the 70% screen console region */
+    div[data-testid="stChatInput"] {
+        max-width: 70% !important;
+        margin-left: auto !important;
+        margin-right: auto !important;
+    }
+    
+    /* Ensure the sticky fixed-dock background matches alignment layout bounds */
     .stChatInputContainer {
         max-width: 70% !important;
         margin: 0 auto !important;
@@ -309,8 +317,7 @@ else:
 # =====================================================
 # 10. USER COMMAND RUNNER WITH ARCHITECTURE HOOKS
 # =====================================================
-# CRITICAL FIX: chat_input is now called globally at the absolute end of the frame stream.
-# The custom global CSS block in Section 1 naturally keeps its visual display centered to 70%.
+# The dynamic selector queries in Section 1 maintain 70% width symmetry across user layout views
 user_query = st.chat_input("Enter technical maintenance question...")
 
 if user_query:
