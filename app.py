@@ -2,6 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 from pypdf import PdfReader
 import os
+import re
 
 # 1. Page Configuration
 st.set_page_config(
@@ -16,36 +17,66 @@ if "GEMINI_API_KEY" in st.secrets:
 elif os.environ.get("GEMINI_API_KEY"):
     genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 else:
-    st.error("Missing Gemini API Key. Please add it to your Streamlit Secrets.")
+    st.error("Missing Gemini API Key.")
     st.stop()
 
-# 3. Sidebar for PDF Upload & Vector Construction
+# Helper function to split text into manageable sentences/paragraphs
+def split_into_chunks(text, size=700):
+    words = text.split()
+    return [" ".join(words[i:i + size]) for i in range(0, len(words), size)]
+
+# Helper function to score chunks based on keyword matching (Local Indexing)
+def find_relevant_chunks(chunks, query, max_results=5):
+    query_words = re.findall(r'\w+', query.lower())
+    scored_chunks = []
+    for chunk in chunks:
+        score = sum(1 for word in query_words if word in chunk.lower())
+        if score > 0:
+            scored_chunks.append((score, chunk))
+    # Sort by highest match score
+    scored_chunks.sort(key=lambda x: x[0], reverse=True)
+    return [chunk for score, chunk in scored_chunks[:max_results]]
+
+# 3. Sidebar for PDF Upload & Token Reduction
 with st.sidebar:
     st.header("Technical Reference Desk")
-    st.write("Upload Rotax manuals or build books here to ground the AI in specific text.")
+    st.write("Upload all technical manuals here. Processing is optimized to stay 100% free.")
     uploaded_files = st.file_uploader("Upload Manuals (PDF)", type=["pdf"], accept_multiple_files=True)
     
-    parsed_context = ""
+    if "document_chunks" not in st.session_state:
+        st.session_state.document_chunks = []
+        st.session_state.uploaded_filenames = []
+
     if uploaded_files:
-        with st.spinner("Processing documents into text vectors..."):
-            for uploaded_file in uploaded_files:
-                reader = PdfReader(uploaded_file)
-                for page in reader.pages:
-                    text = page.extract_text()
-                    if text:
-                        parsed_context += text + "\n"
-        st.success(f"Successfully vectorized {len(uploaded_files)} manual(s)!")
+        new_files = [f.name for f in uploaded_files if f.name not in st.session_state.uploaded_filenames]
+        if new_files:
+            with st.spinner("Analyzing and parsing text locally..."):
+                for uploaded_file in uploaded_files:
+                    if uploaded_file.name in st.session_state.uploaded_filenames:
+                        continue
+                    reader = PdfReader(uploaded_file)
+                    file_text = ""
+                    for page in reader.pages:
+                        text = page.extract_text()
+                        if text:
+                            file_text += text + "\n"
+                    
+                    # Split into chunks locally
+                    file_chunks = split_into_chunks(file_text)
+                    st.session_state.document_chunks.extend(file_chunks)
+                    st.session_state.uploaded_filenames.append(uploaded_file.name)
+            st.success(f"Indexed {len(st.session_state.uploaded_filenames)} manual(s) successfully!")
 
 # 4. App Header & Branding
 st.title("Otimo Aero")
-st.subheader("Technical Support Desk (Vector Engine)")
+st.subheader("Technical Support Desk (Optimized Free-Tier Engine)")
 
 # 5. Initialize Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant", 
-            "content": "Hello. I am your Otimo Aero technical assistant. Upload your manuals in the sidebar, and I can cross-reference them to answer your maintenance or inspection questions."
+            "content": "Hello. I am your Otimo Aero technical assistant. Upload all your manuals in the sidebar, and I will search them dynamically without hitting any limits."
         }
     ]
 
@@ -63,21 +94,21 @@ if user_query := st.chat_input("Enter your technical question here..."):
     
     with st.chat_message("assistant"):
         response_placeholder = st.empty()
-        with st.spinner("Searching document vectors..."):
+        with st.spinner("Extracting matching data segments..."):
             try:
-                # Updated to the current stable production model to fix the 404 error
                 model = genai.GenerativeModel("gemini-2.5-flash")
                 
-                # Constructing the vector-grounded prompt structure
+                # Search the local index instead of dumping everything
+                matched_segments = find_relevant_chunks(st.session_state.document_chunks, user_query)
+                context_str = "\n---\n".join(matched_segments)
+                
                 full_prompt = f"""
                 You are the expert AI technical assistant for Otimo Aero, a high-precision aviation maintenance and technical support business.
                 
-                Use the following extracted manual context chunks to answer the user's question accurately. Prioritize safety and official values from the context provided below.
+                Answer the user's question using the specific manual extracts provided below. If the extracts don't contain the answer, use your baseline manufacturer data to answer, but specify that it is baseline.
                 
-                ---
                 EXTRACTED MANUAL CONTEXT:
-                {parsed_context if parsed_context else 'No specific manual uploaded yet. Relying on baseline manufacturer specifications.'}
-                ---
+                {context_str if context_str else 'No direct keyword matches found in uploaded manuals. Using baseline manufacturer guidelines.'}
                 
                 USER QUESTION: {user_query}
                 """
@@ -87,7 +118,7 @@ if user_query := st.chat_input("Enter your technical question here..."):
                 response_placeholder.write(assistant_response)
                 
             except Exception as e:
-                assistant_response = f"An error occurred while generating the response: {str(e)}"
+                assistant_response = f"An error occurred: {str(e)}"
                 response_placeholder.error(assistant_response)
                 
     st.session_state.messages.append({"role": "assistant", "content": assistant_response})
