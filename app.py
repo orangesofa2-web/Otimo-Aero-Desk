@@ -363,13 +363,19 @@ if user_query:
     change_topic_match = re.search(r'(purge|oil|plug|spark|gap|torque|carb|balance|sync|pressure|fuel)', user_query.lower())
     if change_topic_match and "tool" not in user_query.lower():
         if "purge" in user_query.lower() or "oil" in user_query.lower():
-            st.session_state.active_topic = "OIL PURGING"
+            if "pressure" not in user_query.lower():
+                st.session_state.active_topic = "OIL PURGING"
         elif "plug" in user_query.lower() or "gap" in user_query.lower():
             st.session_state.active_topic = "SPARK PLUG INSPECTION"
         elif "carb" in user_query.lower() or "sync" in user_query.lower() or "balance" in user_query.lower():
             st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
-        elif "pressure" in user_query.lower() or "fuel" in user_query.lower():
-            st.session_state.active_topic = "FUEL PRESSURE CHECK"
+        
+        # Priority mapping for hydraulic pressure tasks
+        if "pressure" in user_query.lower() or "fuel" in user_query.lower():
+            if "oil" in user_query.lower():
+                st.session_state.active_topic = "OIL PRESSURE CHECK"
+            elif "fuel" in user_query.lower():
+                st.session_state.active_topic = "FUEL PRESSURE CHECK"
 
     # GUARDRAIL LAYER A: Cooldown Timer Enforcement
     if time_passed < COOLDOWN_SECONDS:
@@ -475,9 +481,14 @@ To provide the correct technical clearances or procedure parameters, please spec
                     if st.session_state.active_topic:
                         search_query = f"{st.session_state.active_topic} {user_query}"
                     
-                    # HYBRID SEARCH PIPELINE: Boost query keywords if diagnostic words are matched
+                    # HYBRID SEARCH PIPELINE: Advanced Context-Specific Query Rewriting
                     if any(word in user_query.lower() for word in ["test", "troubleshoot", "measure", "gauge", "fault"]):
-                        search_query += " diagnostics diagnostic master gauge tool testing procedure measurement parameters heavy maintenance manual MMH MML"
+                        if "oil" in user_query.lower() and "pressure" in user_query.lower():
+                            search_query = "ROTAX lubrication system diagnostics oil pump main gallery mechanical master pressure gauge sensor accuracy testing procedure limits pressure relief valve"
+                        elif "fuel" in user_query.lower() and "pressure" in user_query.lower():
+                            search_query = "ROTAX fuel system pressure check regulator electric fuel pump delivery tester hose connection specs"
+                        else:
+                            search_query += " diagnostics diagnostic master gauge tool testing procedure measurement parameters heavy maintenance manual MMH MML"
 
                     if st.session_state.vector_index is not None and len(st.session_state.vector_metadata) > 0:
                         query_vector = np.array([get_embedding(search_query)]).astype('float32')
