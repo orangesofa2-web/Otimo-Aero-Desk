@@ -95,7 +95,7 @@ Critical parameters—such as plug gaps, line-purging steps, fuel pressures, and
 * **915iS**
 * **916iS**
 
-*Type your matching engine key code below to open the maintenance desk channels.*"""
+*Type your matching engine model below to open the maintenance desk channels.*"""
 
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": WELCOME_PROMPT}]
@@ -390,7 +390,7 @@ if user_query:
             )
             st.session_state.alert_triggered_today = True
 
-        error_msg = "🚨 **EMERGENCY SHUTDOWN:** The application has reached its maximum daily data allotment. API requests have been locked down to prevent balance exhaustion. Please check again tomorrow."
+        error_msg = "🚨 **EMERGENCY SHUTDOWN:** The agent has exceeded it number of questions for today. Please try again tomorrow."
         if is_admin_mode:
             with st.chat_message("assistant"): st.error(error_msg)
         else:
