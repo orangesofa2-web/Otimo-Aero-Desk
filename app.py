@@ -44,7 +44,7 @@ COOLDOWN_SECONDS = 5        # Minimum wait time between consecutive submissions
 MAX_QUERY_CHARACTERS = 400  # Max size allowed for a single question
 DAILY_TOKEN_BUDGET = 450000 # Emergency circuit breaker for exactly 50 lookups a day
 
-# CRITICAL: Replace this text string with your exact chosen private ntfy topic keyword
+# UNIQUE TOPIC ENVELOPE: Must match your physical phone app subscription exactly
 NTFY_ALERT_TOPIC = "otimo_aero_bench_alerts_912"
 
 # =====================================================
@@ -111,20 +111,30 @@ def get_embedding(text: str, model="text-embedding-3-small"):
     response = openai_client.embeddings.create(input=[cleaned_text], model=model)
     return response.data[0].embedding
 
-# Helper: Outbound push alert engine to your mobile phone
+# Helper: Outbound push alert engine to your mobile phone with clean ASCII forcing
 def send_push_alert(title: str, message: str, priority: str = "default", tags: str = ""):
     if not NTFY_ALERT_TOPIC:
+        st.error("Notification failed: NTFY_ALERT_TOPIC variable is empty.")
         return
     try:
-        url = f"https://ntfy.sh/{NTFY_ALERT_TOPIC}"
+        clean_topic = str(NTFY_ALERT_TOPIC).strip().encode('ascii', 'ignore').decode('ascii')
+        url = f"https://ntfy.sh/{clean_topic}"
+        
         headers = {
-            "Title": title,
-            "Priority": priority,
-            "Tags": tags
+            "Title": str(title).encode('ascii', 'ignore').decode('ascii'),
+            "Priority": str(priority).strip().encode('ascii', 'ignore').decode('ascii'),
+            "Tags": str(tags).strip().encode('ascii', 'ignore').decode('ascii')
         }
-        requests.post(url, data=message.encode('utf-8'), headers=headers, timeout=10)
-    except Exception:
-        pass # Silently proceed to keep core app runtime completely unblocked
+        
+        response = requests.post(url, data=message.encode('utf-8'), headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            st.info(f"✔️ Diagnostic: Network alert dispatched cleanly to ntfy.sh/{clean_topic}!")
+        else:
+            st.error(f"❌ Diagnostic: Server refused packet. Status code: {response.status_code}")
+            
+    except Exception as network_err:
+        st.error(f"❌ Diagnostic: Web connection failed. Details: {str(network_err)}")
 
 # =====================================================
 # 6. DOCUMENT INGESTION & VECTOR MATRIX BUILDER
@@ -270,7 +280,7 @@ if user_query:
     with st.chat_message("user"):
         st.write(user_query)
 
-    # TEMPORARY FORCE TRIGGER HOOK: Intercept test keyword
+    # TEST TRIGGER: Forces the logic threshold over the max limit
     if user_query.strip() == "TEST_ALERT_NOW":
         st.session_state.daily_token_consumption = DAILY_TOKEN_BUDGET + 1000
 
@@ -367,7 +377,7 @@ To provide the correct technical clearances or procedure parameters, please spec
                             if idx != -1 and idx < len(st.session_state.vector_metadata):
                                 if score < 1.3:
                                     chunk_data = st.session_state.vector_metadata[idx]
-                                    matched_chunks.append(f"Source: {chunk_data['source']} = Page {chunk_data['page']}\nContent: {chunk_data['text']}")
+                                    matched_chunks.append(f"Source: {chunk_data['source']} - Page {chunk_data['page']}\nContent: {chunk_data['text']}")
                         
                         if matched_chunks:
                             context_str = "\n\n---\n\n".join(matched_chunks)
