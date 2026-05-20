@@ -126,12 +126,11 @@ if user_query := st.chat_input("Enter your technical question here..."):
             original_intent = st.session_state.pending_clarification
             st.session_state.pending_clarification = None  # Reset flag
             
-            # Reconstruct query using the chosen model variant
+            # Reconstruct full context query string
             user_query = f"{original_intent} for Rotax {user_query}"
             clean_q = user_query.lower().replace(" ", "").replace("-", "")
             
         # SCENARIO B: Catching a vague engine term that requires a qualifying question
-        # Triggered if query references 912 broadly but skips the variant descriptor
         if "912" in clean_q and not any(v in clean_q for v in ["uls", "ul", "is"]):
             st.session_state.pending_clarification = user_query
             assistant_response = """### 🔍 SPECIFICATION REQUIRED
@@ -163,9 +162,10 @@ To provide the correct technical clearances or procedure parameters, please spec
         else:
             with st.spinner("Processing request via production gateway..."):
                 try:
+                    # Look at the user's original intent before the variant clarification split
                     history_context = ""
                     if len(st.session_state.messages) > 2:
-                        recent_messages = st.session_state.messages[-2:-1]
+                        recent_messages = st.session_state.messages[-3:-1]
                         history_context = " ".join([m['content'] for m in recent_messages])
                     
                     combined_search_terms = f"{user_query} {history_context}"
@@ -181,20 +181,23 @@ To provide the correct technical clearances or procedure parameters, please spec
                     top_context = [chunk for score, chunk in scored_chunks[:10]]
                     context_str = "\n---\n".join(top_context)
                     
-                    full_prompt = f"""You are the technical AI desk assistant for Otimo Aero, specializing in Rotax aircraft engines.
-You output answers in a clean, professional, itemized layout. No conversational fluff or commentary.
+                    # Cleaned, structured system prompt with dynamic clarification mandate
+                    full_prompt = f"""You are the technical AI desk assistant for Otimo Aero, indexing official Rotax documentation.
+You output answers in a strict, professional, itemized layout. No conversational fluff, assumptions, or external baseline guesses.
 
-REQUIRED CONSUMABLE BASELINE:
-* If spark plug paste is queried but details are not found in the manuals below, explicitly output: Wacker Aerospace Heat Sink Paste P12 (Rotax P/N 897186). UK Price: £15.00 inc VAT. Do NOT suggest threadlockers.
+CRITICAL DISCIPLINE DIRECTIVE:
+* You must answer the user's question relying EXCLUSIVELY on the provided manual extracts below.
+* If the exact procedure, consumable name, part number, torque specification, or value is missing or unclear within the manual extracts below, you must NOT invent an answer. Instead, explicitly prompt the user for the specific missing parameter or additional information needed to isolate the correct data.
 
 Structure your response exactly like this:
 
 ### 1. QUICK SPEC / PROCEDURE
-* Provide immediate, actionable maintenance steps or specifications based on the extracts below.
-* Keep limits or safety figures to 1-2 sharp lines.
+* Provide the direct maintenance steps or technical values extracted from the text below. 
+* If the text does not contain a definitive answer or is ambiguous, ask the user a specific clarifying question to narrow down the exact reference needed.
 
 ### 2. PARTS & MANUAL DATA
-* List specific part numbers, part descriptions, or manual chapter references extracted from the text.
+* List specific part numbers, tool codes, or manual chapter titles extracted from the text.
+* If missing due to insufficient or ambiguous documentation extracts, state: "Clarification required from user".
 
 ---
 MANUAL EXTRACTS:
@@ -210,7 +213,7 @@ USER QUESTION: {user_query}"""
                     data = {
                         "model": "meta-llama/llama-3.1-8b-instruct",
                         "messages": [{"role": "user", "content": full_prompt}],
-                        "temperature": 0.1
+                        "temperature": 0.0
                     }
                     
                     res = requests.post(url, json=data, headers=headers)
