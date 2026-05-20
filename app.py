@@ -84,7 +84,7 @@ if "vector_index" not in st.session_state:
         st.session_state.vector_index = None
         st.session_state.vector_metadata = []
 
-# STATIC BRACKETED PROMPT DECLARATION
+# STATIC PROMPT DECLARATION (Cleaned formatting)
 WELCOME_PROMPT = """### 🔧 Engine Selection Required
 
 Welcome to the workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration. 
@@ -92,12 +92,12 @@ Welcome to the workbench! Before we look up any technical maintenance details, w
 Critical parameters—such as plug gaps, line-purging steps, fuel pressures, and torque values—vary significantly across model variants. Setting this filter ensures the search engine safely targets the correct technical manual documentation.
 
 **Please reply with the specific engine type you are working on today:**
-* **912 UL** [912UL]
-* **912 ULS** [912ULS]
-* **912 iS** [912iS]
-* **914** [914]
-* **915 iS** [915iS]
-* **916 iS** [916iS]
+* **912UL**
+* **912ULS**
+* **912iS**
+* **914**
+* **915iS**
+* **916iS**
 
 *Type your matching engine key code below to open the maintenance desk channels.*"""
 
@@ -301,7 +301,7 @@ if user_query:
     with st.chat_message("user"):
         st.write(user_query)
 
-    # ENGINE CONTEXT GATE: Validates profile options cleanly from the static prompt rules
+    # ENGINE CONTEXT GATE
     if st.session_state.active_engine is None:
         engine_match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
         if engine_match:
@@ -387,9 +387,9 @@ if user_query:
             st.session_state.pending_clarification = user_query
             assistant_response = """### 🔍 SPECIFICATION REQUIRED
 To provide the correct technical clearances or procedure parameters, please specify your exact engine model variant:
-* **912 ULS** (100 hp, Carbureted)
-* **912 UL** (80 hp, Carbureted)
-* **912 iS** (100 hp, Fuel Injected)
+* **912ULS** (100 hp, Carbureted)
+* **912UL** (80 hp, Carbureted)
+* **912iS** (100 hp, Fuel Injected)
 
 *Please type your variant directly into the chat input below to proceed.*"""
             response_placeholder.write(assistant_response)
