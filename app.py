@@ -390,7 +390,7 @@ if user_query:
             )
             st.session_state.alert_triggered_today = True
 
-        error_msg = "🚨 **EMERGENCY SHUTDOWN:** The agent has exceeded it number of questions for today. Please try again tomorrow."
+        error_msg = "🚨 **EMERGENCY SHUTDOWN:** The agent has exceeded its number of questions for today. Please try again tomorrow."
         if is_admin_mode:
             with st.chat_message("assistant"): st.error(error_msg)
         else:
