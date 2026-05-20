@@ -12,7 +12,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 2. Configure OpenRouter API Key (Paid Unthrottled Production Tier)
+# 2. Configure OpenRouter API Key
 OPENROUTER_API_KEY = ""
 if "OPENROUTER_API_KEY" in st.secrets:
     OPENROUTER_API_KEY = st.secrets["OPENROUTER_API_KEY"]
@@ -43,7 +43,7 @@ def split_into_chunks(text, size=1000):
     words = text.split()
     return [" ".join(words[i:i + size]) for i in range(0, len(words), size)]
 
-# 3. Sidebar for PDF Upload & Index Processing with Deduplication
+# 3. Sidebar for PDF Upload & Index Processing
 with st.sidebar:
     st.header("Technical Reference Desk")
     st.write("Upload manuals here. The local semantic engine scales automatically.")
@@ -60,13 +60,11 @@ with st.sidebar:
 
     if uploaded_files:
         current_names = [f.name for f in uploaded_files]
-        
         if any(name not in current_names for name in st.session_state.uploaded_filenames):
             st.session_state.document_registry = []
             st.session_state.uploaded_filenames = []
             
         new_files = [f for f in uploaded_files if f.name not in st.session_state.uploaded_filenames]
-        
         if new_files:
             with st.spinner("Building local semantic indices..."):
                 for uploaded_file in new_files:
@@ -88,14 +86,13 @@ with st.sidebar:
                         st.session_state.uploaded_filenames.append(uploaded_file.name)
                     except Exception as parse_err:
                         st.error(f"Error parsing {uploaded_file.name}: {str(parse_err)}")
-                        
             st.success(f"Indexed {len(st.session_state.uploaded_filenames)} files!")
 
 # 4. App Header & Branding
 st.title("Otimo Aero")
 st.subheader("Technical Support Desk (OpenRouter Production Engine)")
 
-# 5. Initialize Chat History
+# 5. Initialize Chat History & Context Memory State
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {
@@ -103,6 +100,8 @@ if "messages" not in st.session_state:
             "content": "Hello. Production engine active. Drop your manuals in the sidebar for unthrottled, precise maintenance support."
         }
     ]
+if "pending_clarification" not in st.session_state:
+    st.session_state.pending_clarification = None
 
 # 6. Display Existing Chat History
 for message in st.session_state.messages:
@@ -118,86 +117,113 @@ if user_query := st.chat_input("Enter your technical question here..."):
     
     with st.chat_message("assistant"):
         response_placeholder = st.empty()
-        with st.spinner("Processing request via production gateway..."):
-            try:
-                # Maintain conversation continuity across follow-up queries locally
-                history_context = ""
-                if len(st.session_state.messages) > 2:
-                    recent_messages = st.session_state.messages[-3:-1]
-                    history_context = " ".join([m['content'] for m in recent_messages])
-                
-                combined_search_terms = f"{user_query} {history_context}"
-                query_profile = get_text_profile(combined_search_terms)
-                
-                scored_chunks = []
-                for item in st.session_state.document_registry:
-                    score = score_chunk_universally(item["profile"], query_profile)
-                    if score > 0:
-                        scored_chunks.append((score, item["text"]))
-                
-                scored_chunks.sort(key=lambda x: x[0], reverse=True)
-                top_context = [chunk for score, chunk in scored_chunks[:10]]
-                context_str = "\n---\n".join(top_context)
-                
-                # Fixed Prompt Layout: Absolute division of engine types
-                full_prompt = f"""
-                You are the expert AI technical assistant for Otimo Aero.
-                You must be extremely concise, direct, and practical. No conversational filler or fluff.
-                
-                ENGINE ARCHITECTURE GUIDE:
-                * CARBURETED ENGINES: Rotax 912 UL, Rotax 912 ULS, Rotax 914 F. These engines HAVE carburetors. Carburetor balancing/synchronization applies ONLY to these models.
-                * FUEL-INJECTED ENGINES: Rotax 912 iS, Rotax 915 iS, Rotax 916 iS. These engines use electronic fuel injection and do NOT have carburetors. 
-                
-                CRITICAL SAFETY FILTER:
-                1. Look at the specific engine sub-model identified in the USER QUESTION or RECENT CHAT HISTORY.
-                2. If the user explicitly mentions a fuel-injected model (912 iS, 915 iS, 916 iS) and asks about "balancing carbs", reject it immediately: state that fuel-injected engines do not have carburetors.
-                3. If the user explicitly mentions a carbureted model (912 UL, 912 ULS, 914), do NOT reject it. Go ahead and look at the MANUAL EXTRACTS below to provide the synchronization specs or steps immediately.
-                4. NEVER suggest threadlockers (like Loctite) for spark plugs. If spark plug paste isn't in the manual text, state "Not in uploaded files" and specify: Wacker Aerospace Heat Sink Paste P12 (Rotax P/N 897186), UK Price: £15.00 inc VAT.
-                
-                Structure your answer exactly like this:
-                
-                ### 1. QUICK SPEC / PROCEDURE
-                * Give the direct answer, tool, or physical process immediately using bullet points.
-                * Keep safety parameters or torque limits to 1-2 sharp lines.
-                
-                ### 2. PARTS & MANUAL DATA
-                * Extract only the exact part numbers, consumables, or manual chapters found in the text below.
-                * If not in the text, use the hardcoded manufacturer baselines provided in your safety directive above.
-                
-                ---
-                RECENT RELEVANT CHAT HISTORY:
-                {history_context if history_context else 'No prior history.'}
-                ---
-                MANUAL EXTRACTS:
-                {context_str if context_str else 'No direct documentation matches.'}
-                ---
-                
-                USER QUESTION: {user_query}
-                """
-                
-                # Route data to OpenRouter endpoint using the robust Llama 3.1 8B model
-                url = "https://openrouter.ai/api/v1/chat/completions"
-                headers = {
-                    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                    "Content-Type": "application/json"
-                }
-                data = {
-                    "model": "meta-llama/llama-3.1-8b-instruct",
-                    "messages": [{"role": "user", "content": full_prompt}],
-                    "temperature": 0.1
-                }
-                
-                res = requests.post(url, json=data, headers=headers)
-                
-                if res.status_code == 200:
-                    assistant_response = res.json()["choices"][0]["message"]["content"]
-                    response_placeholder.write(assistant_response)
-                else:
-                    assistant_response = f"OpenRouter Connection Error ({res.status_code}): {res.text}"
+        
+        # Normalize text to catch variations cleanly
+        clean_q = user_query.lower().replace(" ", "").replace("-", "")
+        
+        # SCENARIO A: Resolving an active clarification request
+        if st.session_state.pending_clarification:
+            original_intent = st.session_state.pending_clarification
+            st.session_state.pending_clarification = None  # Reset flag
+            
+            # Reconstruct query using the chosen model variant
+            user_query = f"{original_intent} for Rotax {user_query}"
+            clean_q = user_query.lower().replace(" ", "").replace("-", "")
+            
+        # SCENARIO B: Catching a vague engine term that requires a qualifying question
+        # Triggered if query references 912 broadly but skips the variant descriptor
+        if "912" in clean_q and not any(v in clean_q for v in ["uls", "ul", "is"]):
+            st.session_state.pending_clarification = user_query
+            assistant_response = """### 🔍 SPECIFICATION REQUIRED
+To provide the correct technical clearances or procedure parameters, please specify your exact engine model variant:
+* **912 ULS** (100 hp, Carbureted)
+* **912 UL** (80 hp, Carbureted)
+* **912 iS** (100 hp, Fuel Injected)
+
+*Please type your variant directly into the chat input below to proceed.*"""
+            response_placeholder.write(assistant_response)
+            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+            st.stop()
+
+        # HARDCODED MECHANICAL ENGINE GUARDS (Instant rejections)
+        is_carb_query = any(x in clean_q for x in ["carb", "sync", "balance", "float", "choke"])
+        is_injected_engine = any(x in clean_q for x in ["915", "916", "912is"])
+        
+        if is_carb_query and is_injected_engine:
+            assistant_response = """### 1. QUICK SPEC / PROCEDURE
+* **CRITICAL ERROR:** The engine model specified (Rotax fuel-injected iS series) utilizes dual-channel electronic fuel injection and does not possess carburetors.
+* Carburetor synchronization and pneumatic balancing procedures are completely inapplicable to this power plant.
+
+### 2. PARTS & MANUAL DATA
+* **Status:** Incompatible configuration request."""
+            response_placeholder.write(assistant_response)
+            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+        
+        # SCENARIO C: All filters clear, execute standard manual search
+        else:
+            with st.spinner("Processing request via production gateway..."):
+                try:
+                    history_context = ""
+                    if len(st.session_state.messages) > 2:
+                        recent_messages = st.session_state.messages[-2:-1]
+                        history_context = " ".join([m['content'] for m in recent_messages])
+                    
+                    combined_search_terms = f"{user_query} {history_context}"
+                    query_profile = get_text_profile(combined_search_terms)
+                    
+                    scored_chunks = []
+                    for item in st.session_state.document_registry:
+                        score = score_chunk_universally(item["profile"], query_profile)
+                        if score > 0:
+                            scored_chunks.append((score, item["text"]))
+                    
+                    scored_chunks.sort(key=lambda x: x[0], reverse=True)
+                    top_context = [chunk for score, chunk in scored_chunks[:10]]
+                    context_str = "\n---\n".join(top_context)
+                    
+                    full_prompt = f"""You are the technical AI desk assistant for Otimo Aero, specializing in Rotax aircraft engines.
+You output answers in a clean, professional, itemized layout. No conversational fluff or commentary.
+
+REQUIRED CONSUMABLE BASELINE:
+* If spark plug paste is queried but details are not found in the manuals below, explicitly output: Wacker Aerospace Heat Sink Paste P12 (Rotax P/N 897186). UK Price: £15.00 inc VAT. Do NOT suggest threadlockers.
+
+Structure your response exactly like this:
+
+### 1. QUICK SPEC / PROCEDURE
+* Provide immediate, actionable maintenance steps or specifications based on the extracts below.
+* Keep limits or safety figures to 1-2 sharp lines.
+
+### 2. PARTS & MANUAL DATA
+* List specific part numbers, part descriptions, or manual chapter references extracted from the text.
+
+---
+MANUAL EXTRACTS:
+{context_str if context_str else 'No directly matching documentation found.'}
+---
+USER QUESTION: {user_query}"""
+
+                    url = "https://openrouter.ai/api/v1/chat/completions"
+                    headers = {
+                        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                        "Content-Type": "application/json"
+                    }
+                    data = {
+                        "model": "meta-llama/llama-3.1-8b-instruct",
+                        "messages": [{"role": "user", "content": full_prompt}],
+                        "temperature": 0.1
+                    }
+                    
+                    res = requests.post(url, json=data, headers=headers)
+                    
+                    if res.status_code == 200:
+                        assistant_response = res.json()["choices"][0]["message"]["content"]
+                        response_placeholder.write(assistant_response)
+                    else:
+                        assistant_response = f"OpenRouter Connection Error ({res.status_code}): {res.text}"
+                        response_placeholder.error(assistant_response)
+                    
+                except Exception as e:
+                    assistant_response = f"An error occurred: {str(e)}"
                     response_placeholder.error(assistant_response)
-                
-            except Exception as e:
-                assistant_response = f"An error occurred: {str(e)}"
-                response_placeholder.error(assistant_response)
-                
-    st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+                    
+            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
