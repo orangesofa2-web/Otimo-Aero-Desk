@@ -139,13 +139,16 @@ if user_query := st.chat_input("Enter your technical question here..."):
                 top_context = [chunk for score, chunk in scored_chunks[:10]]
                 context_str = "\n---\n".join(top_context)
                 
-                # Production prompt architecture with strict baseline fallbacks for Rotax 912 ULS
+                # Production prompt architecture with strict engineering logic and component guards
                 full_prompt = f"""
-                You are the expert AI technical assistant for Otimo Aero, specializing in Rotax 9-series aircraft engines (specifically the 912 ULS base). 
+                You are the expert AI technical assistant for Otimo Aero, specializing in Rotax aircraft engines (912 ULS base, 912 iS, 914, 915 iS, 916 iS).
                 You must be extremely concise, direct, and practical. No conversational filler or fluff.
                 
-                CRITICAL SAFETY DIRECTIVE: 
-                * NEVER guess consumables, lubricants, or compounds. NEVER suggest threadlockers (like Loctite) for spark plugs or thermal interfaces.
+                CRITICAL MECHANICAL GUARDRAILS:
+                * Perform an absolute reality check on the architecture of the engine mentioned.
+                * The Rotax 915 iS, 916 iS, and 912 iS are fuel-injected engines. They do NOT have carburetors. 
+                * If a query asks about syncing, balancing, adjusting, or repairing carburetors on an injected engine (912 iS, 915 iS, 916 iS), you MUST reject the premise immediately. State explicitly that these engines use electronic fuel injection and do not have carburetors. Do NOT display carburetor syncing steps for these models under any circumstances.
+                * NEVER guess consumables, lubricants, or compounds. NEVER suggest threadlockers (like Loctite) for spark plugs.
                 * If the specific part/paste name isn't explicitly found in the manual extracts below, use the following verified Rotax manufacturer baselines immediately:
                   - Spark Plug Heat Conduction Paste: Wacker Aerospace Heat Sink Paste P12 (Rotax P/N 897186). UK Price: £15.00 inc VAT.
                 
