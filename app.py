@@ -7,6 +7,7 @@ import json
 import numpy as np
 from openai import OpenAI
 import faiss
+import time
 
 # =====================================================
 # 1. PAGE CONFIGURATION
@@ -37,10 +38,30 @@ INDEX_PATH = "faiss_index.bin"
 METADATA_PATH = "faiss_metadata.json"
 
 # =====================================================
-# 3. SESSION STATE INITIALIZATION
+# 3. SAFETY GUARDRAIL PARAMETERS (UPDATED BENCHMARKS)
+# =====================================================
+COOLDOWN_SECONDS = 5        # Minimum wait time between consecutive submissions
+MAX_QUERY_CHARACTERS = 400  # Max size allowed for a single question
+DAILY_TOKEN_BUDGET = 450000 # Emergency circuit breaker for exactly 50 lookups a day
+
+# CRITICAL: Replace this text string with your exact chosen private ntfy topic keyword
+NTFY_ALERT_TOPIC = "otimo_aero_bench_alerts_912"
+
+# =====================================================
+# 4. SESSION STATE INITIALIZATION
 # =====================================================
 if "documents" not in st.session_state:
     st.session_state.documents = []
+
+# Rate Limiting & Alert State Trackers
+if "last_query_time" not in st.session_state:
+    st.session_state.last_query_time = 0.0
+
+if "daily_token_consumption" not in st.session_state:
+    st.session_state.daily_token_consumption = 0
+
+if "alert_triggered_today" not in st.session_state:
+    st.session_state.alert_triggered_today = False
 
 # Load local vector index into live container memory on startup if it exists
 if "vector_index" not in st.session_state:
@@ -49,7 +70,6 @@ if "vector_index" not in st.session_state:
             st.session_state.vector_index = faiss.read_index(INDEX_PATH)
             with open(METADATA_PATH, "r", encoding="utf-8") as f:
                 st.session_state.vector_metadata = json.load(f)
-            # Reconstruct indexed documents list from metadata trace
             st.session_state.documents = list(set(m["source"] for m in st.session_state.vector_metadata))
         except Exception:
             st.session_state.vector_index = None
@@ -70,7 +90,7 @@ if "pending_clarification" not in st.session_state:
     st.session_state.pending_clarification = None
 
 # =====================================================
-# 4. TECHNICAL SAFETY LAYERS & CORE ENGINES
+# 5. TECHNICAL SAFETY LAYERS & CORE ENGINES
 # =====================================================
 def requires_variant(query: str) -> bool:
     q = query.lower().replace(" ", "").replace("-", "")
@@ -91,13 +111,27 @@ def get_embedding(text: str, model="text-embedding-3-small"):
     response = openai_client.embeddings.create(input=[cleaned_text], model=model)
     return response.data[0].embedding
 
+# Helper: Outbound push alert engine to your mobile phone
+def send_push_alert(title: str, message: str, priority: str = "default", tags: str = ""):
+    if not NTFY_ALERT_TOPIC:
+        return
+    try:
+        url = f"https://ntfy.sh/{NTFY_ALERT_TOPIC}"
+        headers = {
+            "Title": title,
+            "Priority": priority,
+            "Tags": tags
+        }
+        requests.post(url, data=message.encode('utf-8'), headers=headers, timeout=10)
+    except Exception:
+        pass # Silently proceed to keep core app runtime completely unblocked
+
 # =====================================================
-# 5. DOCUMENT INGESTION & VECTOR MATRIX BUILDER
+# 6. DOCUMENT INGESTION & VECTOR MATRIX BUILDER
 # =====================================================
 def rebuild_vector_database(uploaded_files):
     all_chunks = []
     
-    # Process files locally page-by-page to keep contextual bounds intact
     for uploaded_file in uploaded_files:
         try:
             reader = PdfReader(uploaded_file)
@@ -128,14 +162,12 @@ def rebuild_vector_database(uploaded_files):
             progress_bar.progress((idx + 1) / len(all_chunks))
             
         if embeddings_list:
-            # Build the 1536-dimensional FAISS Euclidean Distance Matrix
             dimension = len(embeddings_list[0])
             np_embeddings = np.array(embeddings_list).astype('float32')
             
             index = faiss.IndexFlatL2(dimension)
             index.add(np_embeddings)
             
-            # Save the files directly to the local Streamlit repository instance
             faiss.write_index(index, INDEX_PATH)
             with open(METADATA_PATH, "w", encoding="utf-8") as f:
                 json.dump(metadata_list, f, ensure_ascii=False, indent=2)
@@ -147,7 +179,7 @@ def rebuild_vector_database(uploaded_files):
             st.rerun()
 
 # =====================================================
-# 6. OPENROUTER PRODUCTION HANDSHAKE (LLAMA 3.1 8B)
+# 7. OPENROUTER PRODUCTION HANDSHAKE (LLAMA 3.1 8B)
 # =====================================================
 def call_llm(prompt: str):
     headers = {
@@ -180,7 +212,7 @@ def call_llm(prompt: str):
     return response.json()["choices"][0]["message"]["content"]
 
 # =====================================================
-# 7. SIDEBAR CONTROL PANEL
+# 8. SIDEBAR CONTROL PANEL
 # =====================================================
 with st.sidebar:
     st.header("Manual Management")
@@ -194,12 +226,10 @@ with st.sidebar:
         current_uploads = set(f.name for f in uploaded_files)
         existing_sources = set(st.session_state.documents)
         
-        # Trigger vector calculation only if the file upload state changes
         if current_uploads != existing_sources:
             with st.spinner("Executing high-dimensional conceptual indexing..."):
                 rebuild_vector_database(uploaded_files)
                 
-    # Reset local cache index files if file tray is cleared completely
     if not uploaded_files and st.session_state.vector_metadata:
         if os.path.exists(INDEX_PATH): os.remove(INDEX_PATH)
         if os.path.exists(METADATA_PATH): os.remove(METADATA_PATH)
@@ -210,10 +240,16 @@ with st.sidebar:
 
     st.divider()
     st.metric("Indexed Manuals", len(st.session_state.documents))
-    st.metric("Searchable Vector Coordinates", len(st.session_state.vector_metadata) if st.session_state.vector_metadata else 0)
+    st.metric("Searchable Vector Units", len(st.session_state.vector_metadata) if st.session_state.vector_metadata else 0)
+    
+    # Visual Admin Gauge for Token Consumption Limits
+    st.divider()
+    st.subheader("Guardrail Budget Tracking")
+    st.progress(min(st.session_state.daily_token_consumption / DAILY_TOKEN_BUDGET, 1.0))
+    st.caption(f"Daily Token Counter: {st.session_state.daily_token_consumption} / {DAILY_TOKEN_BUDGET}")
 
 # =====================================================
-# 8. MAIN CHAT DISPLAY
+# 9. MAIN CHAT DISPLAY
 # =====================================================
 st.title("Otimo Aero")
 st.subheader("Next-Generation Aviation Technical AI Desk")
@@ -223,13 +259,60 @@ for message in st.session_state.messages:
         st.write(message["content"])
 
 # =====================================================
-# 9. USER COMMAND RUNNER
+# 10. USER COMMAND RUNNER WITH INTEGRATED TESTING GATES
 # =====================================================
 user_query = st.chat_input("Enter technical maintenance question...")
 
 if user_query:
+    current_time = time.time()
+    time_passed = current_time - st.session_state.last_query_time
+    
     with st.chat_message("user"):
         st.write(user_query)
+
+    # TEMPORARY FORCE TRIGGER HOOK: Intercept test keyword
+    if user_query.strip() == "TEST_ALERT_NOW":
+        st.session_state.daily_token_consumption = DAILY_TOKEN_BUDGET + 1000
+
+    # GUARDRAIL LAYER A: Cooldown Timer Enforcement
+    if time_passed < COOLDOWN_SECONDS:
+        wait_remainder = int(COOLDOWN_SECONDS - time_passed)
+        error_msg = f"⏳ **RATE LIMIT TRIGGERED:** Please wait {wait_remainder} more seconds before submitting another question to protect system stability."
+        with st.chat_message("assistant"):
+            st.warning(error_msg)
+        st.session_state.messages.append({"role": "user", "content": user_query})
+        st.session_state.messages.append({"role": "assistant", "content": error_msg})
+        st.stop()
+
+    # GUARDRAIL LAYER B: Query Volume / Text Size Hard Cap
+    if len(user_query) > MAX_QUERY_CHARACTERS:
+        error_msg = f"⚠️ **INPUT OVERFLOW:** Your entry is too long ({len(user_query)} characters). Questions are limited to {MAX_QUERY_CHARACTERS} characters to prevent credit attacks."
+        with st.chat_message("assistant"):
+            st.error(error_msg)
+        st.session_state.messages.append({"role": "user", "content": user_query})
+        st.session_state.messages.append({"role": "assistant", "content": error_msg})
+        st.stop()
+
+    # GUARDRAIL LAYER C: Daily Token Budget Safety Brake & Outbound Alert
+    if st.session_state.daily_token_consumption >= DAILY_TOKEN_BUDGET:
+        if not st.session_state.alert_triggered_today:
+            send_push_alert(
+                title="🚨 Otimo Aero: Daily Budget Spent",
+                message=f"The application has successfully hit its safety cap limit of {DAILY_TOKEN_BUDGET} tokens (50 lookups). Interface API traffic has been locked.",
+                priority="urgent",
+                tags="warning,lock"
+            )
+            st.session_state.alert_triggered_today = True
+
+        error_msg = "🚨 **EMERGENCY SHUTDOWN:** The application has reached its maximum daily data allotment. API requests have been locked down to prevent balance exhaustion. Please check again tomorrow."
+        with st.chat_message("assistant"):
+            st.error(error_msg)
+        st.session_state.messages.append({"role": "user", "content": user_query})
+        st.session_state.messages.append({"role": "assistant", "content": error_msg})
+        st.stop()
+
+    # Record the timestamp of this verified query
+    st.session_state.last_query_time = current_time
     st.session_state.messages.append({"role": "user", "content": user_query})
 
     with st.chat_message("assistant"):
@@ -276,24 +359,22 @@ To provide the correct technical clearances or procedure parameters, please spec
                     context_str = "No directly matching documentation found in database."
                     
                     if st.session_state.vector_index is not None and len(st.session_state.vector_metadata) > 0:
-                        # Vectorise the user's incoming query text using OpenAI Embeddings API
                         query_vector = np.array([get_embedding(user_query)]).astype('float32')
-                        
-                        # Query the local FAISS matrix for the 12 closest matching page blocks conceptually
                         distances, indices = st.session_state.vector_index.search(query_vector, 12)
                         
                         matched_chunks = []
                         for score, idx in zip(distances[0], indices[0]):
                             if idx != -1 and idx < len(st.session_state.vector_metadata):
-                                # Ambiguity Gate: If distance score is too wide, discard as background noise
                                 if score < 1.3:
                                     chunk_data = st.session_state.vector_metadata[idx]
-                                    matched_chunks.append(f"Source: {chunk_data['source']} (Page {chunk_data['page']})\nContent: {chunk_data['text']}")
+                                    matched_chunks.append(f"Source: {chunk_data['source']} = Page {chunk_data['page']}\nContent: {chunk_data['text']}")
                         
                         if matched_chunks:
                             context_str = "\n\n---\n\n".join(matched_chunks)
 
-                    # Ironclad Prompt Structure
+                    # Update internal tracking state with estimated query overhead
+                    st.session_state.daily_token_consumption += 9000
+
                     final_prompt = f"""You are supporting a licensed aircraft maintenance technician.
 You must answer the user's question relying EXCLUSIVELY on the provided manual extracts below.
 
