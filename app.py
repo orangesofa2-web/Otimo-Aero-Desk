@@ -47,7 +47,6 @@ def chunk_text(text, source_name, chunk_size=800, overlap=150):
 
 # Helper: Fetch Dense Vector Coordinates from OpenAI
 def get_embedding(text, model="text-embedding-3-small"):
-    # Clean up newline breaks to stabilize vector output
     cleaned_text = text.replace("\n", " ")
     response = openai_client.embeddings.create(input=[cleaned_text], model=model)
     return response.data[0].embedding
@@ -84,7 +83,6 @@ if is_admin:
             st.rerun()
 
         if uploaded_files:
-            # Check if we need to process new additions
             existing_sources = set(m["source"].split(" (Page")[0] for m in st.session_state.vector_metadata)
             current_uploads = set(f.name for f in uploaded_files)
             
@@ -117,14 +115,12 @@ if is_admin:
                             progress_bar.progress((idx + 1) / len(all_chunks))
                         
                         if embeddings_list:
-                            # Build the high-dimensional FAISS CPU matrix index (1536 dimensions)
                             dimension = len(embeddings_list[0])
                             np_embeddings = np.array(embeddings_list).astype('float32')
                             
                             index = faiss.IndexFlatL2(dimension)
                             index.add(np_embeddings)
                             
-                            # Persist the calculations cleanly to the deployment disk container
                             faiss.write_index(index, INDEX_PATH)
                             with open(METADATA_PATH, "w", encoding="utf-8") as f:
                                 json.dump(metadata_list, f, ensure_ascii=False, indent=2)
@@ -215,8 +211,8 @@ To provide the correct technical clearances or procedure parameters, please spec
                         
                         matched_chunks = []
                         for score, idx in zip(distances[0], indices[0]):
-                            # -1 indicates no match found in FAISS pool bounds
-                            if idx verifiable_index != -1 and idx < len(st.session_state.vector_metadata):
+                            # Clean syntactic gate for matching indexes
+                            if idx != -1 and idx < len(st.session_state.vector_metadata):
                                 # ENFORCE AMBIGUITY GATE: If geometric similarity distance is too wide,
                                 # treat chunk as background noise to prevent hallucinations.
                                 if score < 1.2: 
