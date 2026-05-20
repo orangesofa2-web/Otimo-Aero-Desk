@@ -293,7 +293,13 @@ else:
 # =====================================================
 # 10. USER COMMAND RUNNER WITH ARCHITECTURE HOOKS
 # =====================================================
-user_query = st.chat_input("Enter technical maintenance question...")
+# Align the typing input interface elements dynamically to mirror the 70% console frame width bounds
+if is_admin_mode:
+    user_query = st.chat_input("Enter technical maintenance question...")
+else:
+    left_input_margin, center_input_box, right_input_margin = st.columns([0.15, 0.70, 0.15])
+    with center_input_box:
+        user_query = st.chat_input("Enter technical maintenance question...")
 
 if user_query:
     current_time = time.time()
