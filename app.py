@@ -180,4 +180,256 @@ def rebuild_vector_database(uploaded_files):
             st.session_state.vector_index = index
             st.session_state.vector_metadata = metadata_list
             st.session_state.documents = list(set(m["source"] for m in metadata_list))
-            st.success("Universal semantic database built
+            st.success("Universal semantic database built and stored successfully!")
+            st.rerun()
+
+# =====================================================
+# 7. OPENROUTER PRODUCTION HANDSHAKE (LLAMA 3.1 8B)
+# =====================================================
+def call_llm(prompt: str):
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    payload = {
+        "model": "meta-llama/llama-3.1-8b-instruct",
+        "temperature": 0.0,
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are the lead technical AI desk assistant for Otimo Aero, providing maintenance support directly to technicians working on aircraft. "
+                    "You output answers in a strict, professional, itemized layout. No conversational fluff, meta-references, or unhelpful remarks."
+                )
+            },
+            {"role": "user", "content": prompt}
+        ],
+        "providers": {
+            "order": ["Lepton", "Together"],
+            "allow_fallbacks": True
+        }
+    }
+    
+    response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=120)
+    if response.status_code != 200:
+        raise Exception(response.text)
+    return response.json()["choices"][0]["message"]["content"]
+
+# =====================================================
+# 8. SIDEBAR CONTROL PANEL (ADMIN GATE LOCKED)
+# =====================================================
+url_params = st.query_params
+
+if url_params.get("admin") == "true":
+    with st.sidebar:
+        st.header("⚙️ Admin Control Panel")
+        
+        if not st.session_state.documents:
+            uploaded_files = st.file_uploader(
+                "Upload Technical Manuals",
+                type=["pdf"],
+                accept_multiple_files=True
+            )
+            if uploaded_files:
+                with st.spinner("Executing high-dimensional conceptual indexing..."):
+                    rebuild_vector_database(uploaded_files)
+        else:
+            st.success("🔒 System Manuals Locked into Memory")
+            if st.button("Clear & Re-upload Manuals"):
+                if os.path.exists(INDEX_PATH): os.remove(INDEX_PATH)
+                if os.path.exists(METADATA_PATH): os.remove(METADATA_PATH)
+                st.session_state.vector_index = None
+                st.session_state.vector_metadata = []
+                st.session_state.documents = []
+                st.rerun()
+
+        st.divider()
+        st.metric("Indexed Manuals", len(st.session_state.documents))
+        st.metric("Searchable Vector Units", len(st.session_state.vector_metadata) if st.session_state.vector_metadata else 0)
+        
+        st.divider()
+        st.subheader("Guardrail Budget Tracking")
+        st.progress(min(st.session_state.daily_token_consumption / DAILY_TOKEN_BUDGET, 1.0))
+        st.caption(f"Daily Token Counter: {st.session_state.daily_token_consumption} / {DAILY_TOKEN_BUDGET}")
+
+# =====================================================
+# 9. MAIN CHAT DISPLAY
+# =====================================================
+st.title("Otimo Aero")
+st.subheader(f"Workspace Environment Status — Engine Variant Context: {st.session_state.active_engine if st.session_state.active_engine else 'NOT INITIALISED'}")
+
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
+
+# =====================================================
+# 10. USER COMMAND RUNNER WITH ARCHITECTURE HOOKS
+# =====================================================
+user_query = st.chat_input("Enter technical maintenance question...")
+
+if user_query:
+    current_time = time.time()
+    time_passed = current_time - st.session_state.last_query_time
+    
+    with st.chat_message("user"):
+        st.write(user_query)
+
+    # ENGINE CONTEXT GATE: Strict layout authorization check before running any automation layers
+    if st.session_state.active_engine is None:
+        engine_match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
+        if engine_match:
+            normalized_engine = engine_match.group(1).upper().replace(" ", "")
+            st.session_state.active_engine = normalized_engine
+            st.session_state.messages.append({"role": "user", "content": user_query})
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": f"### 🔓 CONTEXT ACTIVATED\nEngine profile set to **ROTAX {normalized_engine}**. Core workbench interface channels are ready. Please enter your primary technical maintenance query."
+            })
+            st.rerun()
+        else:
+            assistant_prompt = "### 🔍 ENGINE CONTEXT REQUIRED\nPlease explicitly declare the targeted engine variant model platform (**912 UL**, **912 ULS**, **912 iS**, **914**, **915 iS**, or **916 iS**) to establish session memory parameters."
+            with st.chat_message("assistant"):
+                st.write(assistant_prompt)
+            st.session_state.messages.append({"role": "user", "content": user_query})
+            st.session_state.messages.append({"role": "assistant", "content": assistant_prompt})
+            st.stop()
+
+    # TEST TRIGGER: Forces the logic threshold over the max limit
+    if user_query.strip() == "TEST_ALERT_NOW":
+        st.session_state.daily_token_consumption = DAILY_TOKEN_BUDGET + 1000
+
+    # GUARDRAIL LAYER A: Cooldown Timer Enforcement
+    if time_passed < COOLDOWN_SECONDS:
+        wait_remainder = int(COOLDOWN_SECONDS - time_passed)
+        error_msg = f"⏳ **RATE LIMIT TRIGGERED:** Please wait {wait_remainder} more seconds before submitting another question to protect system stability."
+        with st.chat_message("assistant"):
+            st.warning(error_msg)
+        st.session_state.messages.append({"role": "user", "content": user_query})
+        st.session_state.messages.append({"role": "assistant", "content": error_msg})
+        st.stop()
+
+    # GUARDRAIL LAYER B: Query Volume / Text Size Hard Cap
+    if len(user_query) > MAX_QUERY_CHARACTERS:
+        error_msg = f"⚠️ **INPUT OVERFLOW:** Your entry is too long ({len(user_query)} characters). Questions are limited to {MAX_QUERY_CHARACTERS} characters to prevent credit attacks."
+        with st.chat_message("assistant"):
+            st.error(error_msg)
+        st.session_state.messages.append({"role": "user", "content": user_query})
+        st.session_state.messages.append({"role": "assistant", "content": error_msg})
+        st.stop()
+
+    # GUARDRAIL LAYER C: Daily Token Budget Safety Brake & Outbound Alert
+    if st.session_state.daily_token_consumption >= DAILY_TOKEN_BUDGET:
+        if not st.session_state.alert_triggered_today:
+            send_pushover_alert(
+                title="🚨 Otimo Aero: Daily Budget Spent",
+                message=f"The application has successfully hit its safety cap limit of {DAILY_TOKEN_BUDGET} tokens. Interface API traffic locked."
+            )
+            st.session_state.alert_triggered_today = True
+
+        error_msg = "🚨 **EMERGENCY SHUTDOWN:** The application has reached its maximum daily data allotment. API requests have been locked down to prevent balance exhaustion. Please check again tomorrow."
+        with st.chat_message("assistant"):
+            st.error(error_msg)
+        st.session_state.messages.append({"role": "user", "content": user_query})
+        st.session_state.messages.append({"role": "assistant", "content": error_msg})
+        st.stop()
+
+    # Record the timestamp of this verified query
+    st.session_state.last_query_time = current_time
+    st.session_state.messages.append({"role": "user", "content": user_query})
+
+    with st.chat_message("assistant"):
+        response_placeholder = st.empty()
+
+        # SCENARIO A: Resolving pending clarification requests
+        if st.session_state.pending_clarification:
+            original_intent = st.session_state.pending_clarification
+            st.session_state.pending_clarification = None
+            user_query = f"{original_intent} specifically regarding {user_query}"
+
+        # SCENARIO B: Enforce specific engine variant selections
+        if requires_variant(user_query):
+            st.session_state.pending_clarification = user_query
+            assistant_response = """### 🔍 SPECIFICATION REQUIRED
+To provide the correct technical clearances or procedure parameters, please specify your exact engine model variant:
+* **912 ULS** (100 hp, Carbureted)
+* **912 UL** (80 hp, Carbureted)
+* **912 iS** (100 hp, Fuel Injected)
+
+*Please type your variant directly into the chat input below to proceed.*"""
+            response_placeholder.write(assistant_response)
+            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+            st.stop()
+
+        # SCENARIO C: Hardcoded Configuration Blocking Guard
+        if invalid_configuration(user_query) or (invalid_configuration(st.session_state.active_engine) and any(t in user_query.lower() for t in ["carb", "sync", "balance"])):
+            assistant_response = """### 1. QUICK SPEC / PROCEDURE
+* **CRITICAL ERROR:** The engine model specified configuration platform utilizes electronic fuel injection and does not possess carburetors.
+* Carburetor synchronization and pneumatic balancing procedures are completely inapplicable to this power plant.
+
+### 2. PARTS & MANUAL DATA
+* **Status:** Incompatible configuration request."""
+            response_placeholder.write(assistant_response)
+            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+            st.stop()
+
+        # SCENARIO D: Execution Loop
+        else:
+            with st.spinner("Executing mathematical spatial context scan..."):
+                try:
+                    context_str = "No directly matching documentation found in database."
+                    
+                    # Core Safety Check: Verify index has been created before doing vectorized lookups
+                    if st.session_state.vector_index is not None and len(st.session_state.vector_metadata) > 0:
+                        query_vector = np.array([get_embedding(user_query)]).astype('float32')
+                        distances, indices = st.session_state.vector_index.search(query_vector, 12)
+                        
+                        matched_chunks = []
+                        for score, idx in zip(distances[0], indices[0]):
+                            if idx != -1 and idx < len(st.session_state.vector_metadata):
+                                if score < 1.3:
+                                    chunk_data = st.session_state.vector_metadata[idx]
+                                    matched_chunks.append(f"Source: {chunk_data['source']} - Page {chunk_data['page']}\nContent: {chunk_data['text']}")
+                        
+                        if matched_chunks:
+                            context_str = "\n\n---\n\n".join(matched_chunks)
+                    else:
+                        context_str = f"System structural configuration info: No technical manual documentation PDFs have been vectorized or uploaded into server memory yet via the administrative workbench panel interface."
+
+                    # Update internal tracking state with estimated query overhead
+                    st.session_state.daily_token_consumption += 9000
+
+                    final_prompt = f"""You are supporting a licensed aircraft maintenance technician.
+You must answer the user's question relying EXCLUSIVELY on the provided manual extracts below.
+You are explicitly assigned to find information for the following engine profile baseline: ROTAX {st.session_state.active_engine}.
+
+CRITICAL DISCIPLINE DIRECTIVE FOR TECHNICAL SUPPORT:
+1. Your primary purpose is to help the user complete maintenance tasks SAFELY and SUCCESSFULLY right now. 
+2. NEVER copy or output generic sentences that tell the user to \"refer to the maintenance manual\" or \"see Chapter X\". You are their interface to the manual. You must extract and output the actual, physical, sequential step-by-step instructions contained in the text.
+3. If the provided manual extracts contain the actual steps, tolerances, clearances, or values, you MUST write them out in explicit detail under Section 1 so the technician can complete the activity without opening another file.
+4. IF AND ONLY IF the explicit step-by-step physical procedure or target values are entirely absent or cut off within the extracts below, you must NOT invent data or give vague summaries. Instead, use Section 1 to ask a simple, precise clarifying question to get the missing context or component name needed to pull the correct pages.
+
+Structure your response exactly like this:
+
+### 1. QUICK SPEC / PROCEDURE
+* Provide the concrete, sequential maintenance steps, checks, settings, or technical values extracted from the text below. Write them out fully so the technician can perform the work safely.
+* If the task text is missing from the extracts, explicitly ask a clear technical clarifying question to narrow down the missing details.
+
+### 2. PARTS & MANUAL DATA
+* List specific part numbers, tool codes, or official manual chapter titles explicitly extracted from the text.
+* If missing due to text gaps, state: \"Clarification required from user\".
+
+---
+MANUAL EXTRACTS:
+{context_str}
+---
+USER QUESTION: {user_query}"""
+
+                    assistant_response = call_llm(final_prompt)
+                    response_placeholder.write(assistant_response)
+                    
+                except Exception as e:
+                    assistant_response = f"An error occurred during matrix processing: {str(e)}"
+                    response_placeholder.error(assistant_response)
+                    
+            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
