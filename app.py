@@ -43,50 +43,58 @@ def split_into_chunks(text, size=1000):
     words = text.split()
     return [" ".join(words[i:i + size]) for i in range(0, len(words), size)]
 
-# 3. Sidebar for PDF Upload & Index Processing
-with st.sidebar:
-    st.header("Technical Reference Desk")
-    st.write("Upload manuals here. The local semantic engine scales automatically.")
-    uploaded_files = st.file_uploader("Upload Manuals (PDF)", type=["pdf"], accept_multiple_files=True)
-    
-    if "document_registry" not in st.session_state:
-        st.session_state.document_registry = []
-    if "uploaded_filenames" not in st.session_state:
-        st.session_state.uploaded_filenames = []
+# 3. Dynamic Access Control (Checks URL for ?admin=true)
+# Normal users on your Google Site see zero upload options. Only you see it when using the admin link.
+is_admin = st.query_params.get("admin") == "true"
 
-    if not uploaded_files and st.session_state.uploaded_filenames:
-        st.session_state.document_registry = []
-        st.session_state.uploaded_filenames = []
+if is_admin:
+    with st.sidebar:
+        st.header("Admin Control: Reference Desk")
+        st.write("Upload manuals here. This sidebar is hidden from regular web traffic.")
+        uploaded_files = st.file_uploader("Upload Manuals (PDF)", type=["pdf"], accept_multiple_files=True)
+        
+        if "document_registry" not in st.session_state:
+            st.session_state.document_registry = []
+        if "uploaded_filenames" not in st.session_state:
+            st.session_state.uploaded_filenames = []
 
-    if uploaded_files:
-        current_names = [f.name for f in uploaded_files]
-        if any(name not in current_names for name in st.session_state.uploaded_filenames):
+        if not uploaded_files and st.session_state.uploaded_filenames:
             st.session_state.document_registry = []
             st.session_state.uploaded_filenames = []
-            
-        new_files = [f for f in uploaded_files if f.name not in st.session_state.uploaded_filenames]
-        if new_files:
-            with st.spinner("Building local semantic indices..."):
-                for uploaded_file in new_files:
-                    try:
-                        reader = PdfReader(uploaded_file)
-                        file_text = ""
-                        for page in reader.pages:
-                            text = page.extract_text()
-                            if text:
-                                file_text += text + "\n"
-                        
-                        file_chunks = split_into_chunks(file_text)
-                        for chunk in file_chunks:
-                            profile = get_text_profile(chunk)
-                            st.session_state.document_registry.append({
-                                "text": chunk,
-                                "profile": profile
-                            })
-                        st.session_state.uploaded_filenames.append(uploaded_file.name)
-                    except Exception as parse_err:
-                        st.error(f"Error parsing {uploaded_file.name}: {str(parse_err)}")
-            st.success(f"Indexed {len(st.session_state.uploaded_filenames)} files!")
+
+        if uploaded_files:
+            current_names = [f.name for f in uploaded_files]
+            if any(name not in current_names for name in st.session_state.uploaded_filenames):
+                st.session_state.document_registry = []
+                st.session_state.uploaded_filenames = []
+                
+            new_files = [f for f in uploaded_files if f.name not in st.session_state.uploaded_filenames]
+            if new_files:
+                with st.spinner("Building local semantic indices..."):
+                    for uploaded_file in new_files:
+                        try:
+                            reader = PdfReader(uploaded_file)
+                            file_text = ""
+                            for page in reader.pages:
+                                text = page.extract_text()
+                                if text:
+                                    file_text += text + "\n"
+                            
+                            file_chunks = split_into_chunks(file_text)
+                            for chunk in file_chunks:
+                                profile = get_text_profile(chunk)
+                                st.session_state.document_registry.append({
+                                    "text": chunk,
+                                    "profile": profile
+                                })
+                            st.session_state.uploaded_filenames.append(uploaded_file.name)
+                        except Exception as parse_err:
+                            st.error(f"Error parsing {uploaded_file.name}: {str(parse_err)}")
+                st.success(f"Indexed {len(st.session_state.uploaded_filenames)} files!")
+else:
+    # Ensure background memory structures exist for standard users even with the sidebar hidden
+    if "document_registry" not in st.session_state:
+        st.session_state.document_registry = []
 
 # 4. App Header & Branding
 st.title("Otimo Aero")
@@ -97,7 +105,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant", 
-            "content": "Hello. Production engine active. Drop your manuals in the sidebar for unthrottled, precise maintenance support."
+            "content": "Hello. Production engine active. Enter your technical query below for unthrottled, precise maintenance support."
         }
     ]
 if "pending_clarification" not in st.session_state:
@@ -181,7 +189,7 @@ To provide the correct technical clearances or procedure parameters, please spec
                     top_context = [chunk for score, chunk in scored_chunks[:10]]
                     context_str = "\n---\n".join(top_context)
                     
-                    # Hardened system prompt with strict serial number ban
+                    # Cleaned, structured system prompt with strict zero-hallucination mandate
                     full_prompt = f"""You are the technical AI desk assistant for Otimo Aero, indexing official Rotax documentation.
 You output answers in a strict, professional, itemized layout. No conversational fluff, assumptions, or external baseline guesses.
 
@@ -211,13 +219,15 @@ USER QUESTION: {user_query}"""
                         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
                         "Content-Type": "application/json"
                     }
-                    # SPECIFIED OVERRIDE: Using the explicit meta-llama production routing to utilize paid endpoints
+                    
+                    # FIXED ROUTING MATRIX: Targets premium infrastructure nodes natively to eliminate 429 limits
                     data = {
                         "model": "meta-llama/llama-3.1-8b-instruct",
                         "messages": [{"role": "user", "content": full_prompt}],
                         "temperature": 0.0,
-                        "provider": {
-                            "allow_fallbacks": False
+                        "providers": {
+                            "order": ["Lepton", "Together"],
+                            "allow_fallbacks": True
                         }
                     }
                     
