@@ -65,7 +65,7 @@ if "alert_triggered_today" not in st.session_state:
 if "active_engine" not in st.session_state:
     st.session_state.active_engine = None
 
-# PERSISTENT TOPIC TRACKER: Keeps the maintenance task locked in across turns
+# Persistent Topic Tracker: Keeps the maintenance task locked in across turns
 if "active_topic" not in st.session_state:
     st.session_state.active_topic = None
 
@@ -88,7 +88,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant",
-            "content": "Hello. True semantic vector production engine active. Engine context must be specified to initialize workspace panels."
+            "content": "Welcome to the Otimo Aero Technical Support Desk. Please specify your engine type below to unlock the workspace panels and begin searching your engineering documentation."
         }
     ]
 
@@ -263,7 +263,7 @@ if url_params.get("admin") == "true":
 # =====================================================
 st.title("Otimo Aero")
 
-status_line = f"Workspace Status — Engine Profile: {st.session_state.active_engine if st.session_state.active_engine else 'Please input your engine model; 912U, 912ULS, 912iS, 914, 915iS or 916iS'}"
+status_line = f"Workspace Status — Engine Profile: {st.session_state.active_engine if st.session_state.active_engine else 'NOT INITIALISED'}"
 if st.session_state.active_topic:
     status_line += f" | Current Maintenance Task: {st.session_state.active_topic}"
 st.subheader(status_line)
@@ -284,7 +284,7 @@ if user_query:
     with st.chat_message("user"):
         st.write(user_query)
 
-    # ENGINE CONTEXT GATE
+    # ENGINE CONTEXT GATE: Friendly welcome script displaying full variant listings
     if st.session_state.active_engine is None:
         engine_match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
         if engine_match:
@@ -293,21 +293,33 @@ if user_query:
             st.session_state.messages.append({"role": "user", "content": user_query})
             st.session_state.messages.append({
                 "role": "assistant", 
-                "content": f"### 🔓 CONTEXT ACTIVATED\nEngine profile set to **ROTAX {normalized_engine}**. Core workbench interface channels are ready. Please enter your primary technical maintenance query."
+                "content": f"### 🔓 WORKSPACE UNLOCKED\nEngine profile securely set to **ROTAX {normalized_engine}**. Core data routing channels are now active. Please enter your primary technical maintenance query or task below."
             })
             st.rerun()
         else:
-            assistant_prompt = "### 🔍 ENGINE CONTEXT REQUIRED\nPlease explicitly declare the targeted engine variant model platform (**912 UL**, **912 ULS**, **912 iS**, **914**, **915 iS**, or **916 iS**) to establish session memory parameters."
+            friendly_prompt = """### 🔧 Engine Variant Selection Required
+Welcome to the bench! To ensure your safety and provide completely flawless technical specs, I need to lock onto your precise engine configuration. 
+
+Rotax powerplants differ significantly across models—carburetor settings, electronic fuel injection wiring layouts, torque limits, and purging workflows are completely unique to each variant. Knowing exactly what is on your mount allows me to retrieve the perfect matches from your manuals without any dangerous overlap.
+
+**Please type in which engine variant you are working on today:**
+* **912 UL** *(80 hp, Naturally Aspirated Carbureted)*
+* **912 ULS** *(100 hp, Naturally Aspirated Carbureted)*
+* **912 iS** *(100 hp, FADEC Fuel Injected)*
+* **914** *(115 hp, Turbocharged Carbureted)*
+* **915 iS** *(141 hp, Turbocharged FADEC Fuel Injected)*
+* **916 iS** *(160 hp, Turbocharged FADEC Fuel Injected)*
+
+*Simply reply with your variant model choice below to open up the workbench channels.*"""
             with st.chat_message("assistant"):
-                st.write(assistant_prompt)
+                st.markdown(friendly_prompt)
             st.session_state.messages.append({"role": "user", "content": user_query})
-            st.session_state.messages.append({"role": "assistant", "content": assistant_prompt})
+            st.session_state.messages.append({"role": "assistant", "content": friendly_prompt})
             st.stop()
 
-    # TOPIC EXTRACTOR LOGIC: Detects if the user is changing the core procedure topic
+    # TOPIC EXTRACTOR LOGIC
     change_topic_match = re.search(r'(purge|oil|plug|spark|gap|torque|carb|balance|sync)', user_query.lower())
     if change_topic_match and "tool" not in user_query.lower():
-        # Set a clean text anchor based on keyword detection
         if "purge" in user_query.lower() or "oil" in user_query.lower():
             st.session_state.active_topic = "OIL PURGING"
         elif "plug" in user_query.lower() or "gap" in user_query.lower():
@@ -351,4 +363,115 @@ if user_query:
         with st.chat_message("assistant"):
             st.error(error_msg)
         st.session_state.messages.append({"role": "user", "content": user_query})
-        st.session_state.messages.append({"role
+        st.session_state.messages.append({"role": "assistant", "content": error_msg})
+        st.stop()
+
+    # Record the timestamp of this verified query
+    st.session_state.last_query_time = current_time
+    st.session_state.messages.append({"role": "user", "content": user_query})
+
+    with st.chat_message("assistant"):
+        response_placeholder = st.empty()
+
+        # SCENARIO A: Resolving pending clarification requests
+        if st.session_state.pending_clarification:
+            original_intent = st.session_state.pending_clarification
+            st.session_state.pending_clarification = None
+            user_query = f"{original_intent} specifically regarding {user_query}"
+
+        # SCENARIO B: Enforce specific engine variant selections
+        if requires_variant(user_query):
+            st.session_state.pending_clarification = user_query
+            assistant_response = """### 🔍 SPECIFICATION REQUIRED
+To provide the correct technical clearances or procedure parameters, please specify your exact engine model variant:
+* **912 ULS** (100 hp, Carbureted)
+* **912 UL** (80 hp, Carbureted)
+* **912 iS** (100 hp, Fuel Injected)
+
+*Please type your variant directly into the chat input below to proceed.*"""
+            response_placeholder.write(assistant_response)
+            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+            st.stop()
+
+        # SCENARIO C: Hardcoded Configuration Blocking Guard
+        if invalid_configuration(user_query) or (invalid_configuration(st.session_state.active_engine) and any(t in user_query.lower() for t in ["carb", "sync", "balance"])):
+            assistant_response = """### 1. QUICK SPEC / PROCEDURE
+* **CRITICAL ERROR:** The engine model specified configuration platform utilizes electronic fuel injection and does not possess carburetors.
+* Carburetor synchronization and pneumatic balancing procedures are completely inapplicable to this power plant.
+
+### 2. PARTS & MANUAL DATA
+* **Status:** Incompatible configuration request."""
+            response_placeholder.write(assistant_response)
+            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+            st.stop()
+
+        # SCENARIO D: Execution Loop
+        else:
+            with st.spinner("Executing mathematical spatial context scan..."):
+                try:
+                    context_str = "No directly matching documentation found in database."
+                    
+                    # INJECT MEMORY INTO DATABASE LOOKUP: If an active topic exists, bake it into the vector search
+                    search_query = user_query
+                    if st.session_state.active_topic:
+                        search_query = f"{st.session_state.active_topic} {user_query}"
+                    
+                    if st.session_state.vector_index is not None and len(st.session_state.vector_metadata) > 0:
+                        query_vector = np.array([get_embedding(search_query)]).astype('float32')
+                        distances, indices = st.session_state.vector_index.search(query_vector, 12)
+                        
+                        matched_chunks = []
+                        for score, idx in zip(distances[0], indices[0]):
+                            if idx != -1 and idx < len(st.session_state.vector_metadata):
+                                if score < 1.3:
+                                    chunk_data = st.session_state.vector_metadata[idx]
+                                    matched_chunks.append(f"Source: {chunk_data['source']} - Page {chunk_data['page']}\nContent: {chunk_data['text']}")
+                        
+                        if matched_chunks:
+                            context_str = "\n\n---\n\n".join(matched_chunks)
+                    else:
+                        context_str = f"System structural configuration info: No technical manual documentation PDFs have been vectorized or uploaded into server memory yet via the administrative workbench panel interface."
+
+                    # Update internal tracking state with estimated query overhead
+                    st.session_state.daily_token_consumption += 9000
+
+                    # Adjust prompt rules to explicitly reinforce persistent topic memory
+                    topic_context_injection = ""
+                    if st.session_state.active_topic:
+                        topic_context_injection = f"The technician is explicitly working within the sub-context domain of: {st.session_state.active_topic}. Keep all tool lists, part numbers, and steps locked strictly onto this operational procedure."
+
+                    final_prompt = f"""You are supporting a licensed aircraft maintenance technician.
+You must answer the user's question relying EXCLUSIVELY on the provided manual extracts below.
+You are explicitly assigned to find information for the following engine profile baseline: ROTAX {st.session_state.active_engine}.
+{topic_context_injection}
+
+CRITICAL DISCIPLINE DIRECTIVE FOR TECHNICAL SUPPORT:
+1. Your primary purpose is to help the user complete maintenance tasks SAFELY and SUCCESSFULLY right now. 
+2. NEVER copy or output generic sentences that tell the user to \"refer to the maintenance manual\" or \"see Chapter X\". You are their interface to the manual. You must extract and output the actual, physical, sequential step-by-step instructions contained in the text.
+3. If the provided manual extracts contain the actual steps, tolerances, clearances, or values, you MUST write them out in explicit detail under Section 1 so the technician can complete the activity without opening another file.
+4. IF AND ONLY IF the explicit step-by-step physical procedure or target values are entirely absent or cut off within the extracts below, you must NOT invent data or give vague summaries. Instead, use Section 1 to ask a simple, precise clarifying question to get the missing context or component name needed to pull the correct pages.
+
+Structure your response exactly like this:
+
+### 1. QUICK SPEC / PROCEDURE
+* Provide the concrete, sequential maintenance steps, checks, settings, or technical values extracted from the text below. Write them out fully so the technician can perform the work safely.
+* If the task text is missing from the extracts, explicitly ask a clear technical clarifying question to narrow down the missing details.
+
+### 2. PARTS & MANUAL DATA
+* List specific part numbers, tool codes, or official manual chapter titles explicitly extracted from the text.
+* If missing due to text gaps, state: \"Clarification required from user\".
+
+---
+MANUAL EXTRACTS:
+{context_str}
+---
+USER QUESTION: {user_query}"""
+
+                    assistant_response = call_llm(final_prompt)
+                    response_placeholder.write(assistant_response)
+                    
+                except Exception as e:
+                    assistant_response = f"An error occurred during matrix processing: {str(e)}"
+                    response_placeholder.error(assistant_response)
+                    
+            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
