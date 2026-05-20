@@ -18,7 +18,7 @@ if "GEMINI_API_KEY" in st.secrets:
 elif os.environ.get("GEMINI_API_KEY"):
     genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 else:
-    st.error("Missing Gemini API Key.")
+    st.error("Missing Gemini API Key. Please add it to your Streamlit Secrets.")
     st.stop()
 
 # Helper: Clean text into character-grams to extract root meanings across technical terms
@@ -28,7 +28,7 @@ def get_text_profile(text):
     profile = Counter(words)
     for word in words:
         if len(word) > 3:
-            # Adds sub-word roots (e.g., "pressur" from "pressure"/"pressurized") to bridge technical text gaps
+            # Adds sub-word roots (e.g., "pressur" from "pressure") to bridge technical text gaps
             for i in range(len(word) - 3):
                 profile[word[i:i+4]] += 0.5
     return profile
@@ -43,23 +43,27 @@ def split_into_chunks(text, size=500):
     words = text.split()
     return [" ".join(words[i:i + size]) for i in range(0, len(words), size)]
 
-# 3. Sidebar for PDF Upload & Index Processing
+# 3. Sidebar for PDF Upload & Index Processing with Deduplication
 with st.sidebar:
     st.header("Technical Reference Desk")
     st.write("Upload any combination of technical manuals. The local semantic engine scales automatically.")
     uploaded_files = st.file_uploader("Upload Manuals (PDF)", type=["pdf"], accept_multiple_files=True)
     
+    # Track states reliably
     if "document_registry" not in st.session_state:
         st.session_state.document_registry = [] # Stores dicts of {"text": chunk, "profile": profile}
     if "uploaded_filenames" not in st.session_state:
         st.session_state.uploaded_filenames = []
 
+    # Reset cache if files are entirely cleared from the widget
     if not uploaded_files and st.session_state.uploaded_filenames:
         st.session_state.document_registry = []
         st.session_state.uploaded_filenames = []
 
     if uploaded_files:
         current_names = [f.name for f in uploaded_files]
+        
+        # Remove chunks of files that were deleted from the widget selection
         if any(name not in current_names for name in st.session_state.uploaded_filenames):
             st.session_state.document_registry = []
             st.session_state.uploaded_filenames = []
@@ -119,6 +123,7 @@ if user_query := st.chat_input("Enter your technical question here..."):
         response_placeholder = st.empty()
         with st.spinner("Extracting matching data segments..."):
             try:
+                # Using current active model name to avoid 404 deprecation blocks
                 model = genai.GenerativeModel("gemini-2.5-flash")
                 
                 # Grade all chunks universally against user intent
@@ -130,19 +135,27 @@ if user_query := st.chat_input("Enter your technical question here..."):
                     if score > 0:
                         scored_chunks.append((score, item["text"]))
                 
-                # Sort by highest match profile and pick the top 5 distinct context blocks
+                # Sort by highest match profile and pick top 5 distinct context blocks
                 scored_chunks.sort(key=lambda x: x[0], reverse=True)
                 top_context = [chunk for score, chunk in scored_chunks[:5]]
                 context_str = "\n---\n".join(top_context)
                 
+                # Two-part structured prompt prompt to always guarantee an actionable procedure response
                 full_prompt = f"""
-                You are the expert AI technical assistant for Otimo Aero, a high-precision aviation maintenance and technical support business.
+                You are the expert AI technical assistant for Otimo Aero, a high-precision aviation maintenance and technical support business specializing in Rotax engines and light aircraft.
                 
-                Analyze the provided technical documentation fragments to answer the user's question with direct values, procedures, or parameters. 
-                If the fragments do not contain the answer explicitly, use your underlying manufacturer baseline data to provide the solution, but clarify that it is based on manufacturer standards.
+                You must answer the user's request by strictly following this two-part structure:
                 
-                TECHNICAL RELEVANCE EXTRACTS:
-                {context_str if context_str else 'No direct technical documentation matches discovered in the local index. Using manufacturer baseline guidelines.'}
+                ### 1. TECHNICAL PROCEDURE & OVERVIEW
+                First, explain the complete, standard technical process or specification requested using your baseline manufacturer engineering knowledge. Be precise with values, safety parameters, and standard aviation practices.
+                
+                ### 2. DOCUMENTATION & CONSUMABLES RESEARCH
+                Second, deeply analyze the provided technical documentation fragments below. Search them specifically for exact part numbers, authorized consumables (pastes, lubricants, sealants), torque limits, or specific manual cross-references. State exactly what the uploaded text defines.
+                
+                ---
+                TECHNICAL RELEVANCE EXTRACTS FROM UPLOADED MANUALS:
+                {context_str if context_str else 'No direct documentation matches discovered in the local index.'}
+                ---
                 
                 USER QUESTION: {user_query}
                 """
