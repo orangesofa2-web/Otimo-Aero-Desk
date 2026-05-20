@@ -139,18 +139,20 @@ if user_query := st.chat_input("Enter your technical question here..."):
                 top_context = [chunk for score, chunk in scored_chunks[:10]]
                 context_str = "\n---\n".join(top_context)
                 
-                # Production prompt architecture with strict engineering logic and component guards
+                # Fixed Prompt Layout: Absolute division of engine types
                 full_prompt = f"""
-                You are the expert AI technical assistant for Otimo Aero, specializing in Rotax aircraft engines (912 ULS base, 912 iS, 914, 915 iS, 916 iS).
+                You are the expert AI technical assistant for Otimo Aero.
                 You must be extremely concise, direct, and practical. No conversational filler or fluff.
                 
-                CRITICAL MECHANICAL GUARDRAILS:
-                * Perform an absolute reality check on the architecture of the engine mentioned.
-                * The Rotax 915 iS, 916 iS, and 912 iS are fuel-injected engines. They do NOT have carburetors. 
-                * If a query asks about syncing, balancing, adjusting, or repairing carburetors on an injected engine (912 iS, 915 iS, 916 iS), you MUST reject the premise immediately. State explicitly that these engines use electronic fuel injection and do not have carburetors. Do NOT display carburetor syncing steps for these models under any circumstances.
-                * NEVER guess consumables, lubricants, or compounds. NEVER suggest threadlockers (like Loctite) for spark plugs.
-                * If the specific part/paste name isn't explicitly found in the manual extracts below, use the following verified Rotax manufacturer baselines immediately:
-                  - Spark Plug Heat Conduction Paste: Wacker Aerospace Heat Sink Paste P12 (Rotax P/N 897186). UK Price: £15.00 inc VAT.
+                ENGINE ARCHITECTURE GUIDE:
+                * CARBURETED ENGINES: Rotax 912 UL, Rotax 912 ULS, Rotax 914 F. These engines HAVE carburetors. Carburetor balancing/synchronization applies ONLY to these models.
+                * FUEL-INJECTED ENGINES: Rotax 912 iS, Rotax 915 iS, Rotax 916 iS. These engines use electronic fuel injection and do NOT have carburetors. 
+                
+                CRITICAL SAFETY FILTER:
+                1. Look at the specific engine sub-model identified in the USER QUESTION or RECENT CHAT HISTORY.
+                2. If the user explicitly mentions a fuel-injected model (912 iS, 915 iS, 916 iS) and asks about "balancing carbs", reject it immediately: state that fuel-injected engines do not have carburetors.
+                3. If the user explicitly mentions a carbureted model (912 UL, 912 ULS, 914), do NOT reject it. Go ahead and look at the MANUAL EXTRACTS below to provide the synchronization specs or steps immediately.
+                4. NEVER suggest threadlockers (like Loctite) for spark plugs. If spark plug paste isn't in the manual text, state "Not in uploaded files" and specify: Wacker Aerospace Heat Sink Paste P12 (Rotax P/N 897186), UK Price: £15.00 inc VAT.
                 
                 Structure your answer exactly like this:
                 
@@ -159,7 +161,7 @@ if user_query := st.chat_input("Enter your technical question here..."):
                 * Keep safety parameters or torque limits to 1-2 sharp lines.
                 
                 ### 2. PARTS & MANUAL DATA
-                * Extract only the exact part numbers, consumables, or manual chapters found in the text below. 
+                * Extract only the exact part numbers, consumables, or manual chapters found in the text below.
                 * If not in the text, use the hardcoded manufacturer baselines provided in your safety directive above.
                 
                 ---
