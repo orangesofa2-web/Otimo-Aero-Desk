@@ -52,7 +52,7 @@ if user_query := st.chat_input("Enter your technical question here..."):
         with st.spinner("Consulting technical manuals..."):
             try:
                 # Using the recommended model for general text tasks
-                model = genai.GenerativeModel("gemini-1.5-flash")
+                model = genai.GenerativeModel("models/gemini-1.5-flash")
                 
                 # Context to keep the AI grounded in your specific business domain
                 system_instruction = (
