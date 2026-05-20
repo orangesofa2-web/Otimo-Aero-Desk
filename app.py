@@ -2,6 +2,7 @@ import streamlit as st
 from pypdf import PdfReader
 import os
 import re
+import math
 from collections import Counter
 import requests
 
@@ -23,28 +24,11 @@ if not OPENROUTER_API_KEY:
     st.error("Missing OPENROUTER_API_KEY in Streamlit Secrets. Please add it to your app settings.")
     st.stop()
 
-# Helper: Clean text into character-grams to extract root meanings across technical terms
-def get_text_profile(text):
-    words = re.findall(r'\w+', text.lower())
-    profile = Counter(words)
-    for word in words:
-        if len(word) > 3:
-            for i in range(len(word) - 3):
-                profile[word[i:i+4]] += 0.5
-    return profile
-
-# Helper: Universal local relevance scoring using vector-space token frequency overlap
-def score_chunk_universally(chunk_profile, query_profile):
-    intersection = set(chunk_profile.keys()) & set(query_profile.keys())
-    score = sum(chunk_profile[token] * query_profile[token] for token in intersection)
-    return score
-
-def split_into_chunks(text, size=1000):
-    words = text.split()
-    return [" ".join(words[i:i + size]) for i in range(0, len(words), size)]
+# Helper: Tokenize text into clean alphanumeric lowercase words
+def tokenize(text):
+    return re.findall(r'\b[a-z0-9]{3,20}\b', text.lower())
 
 # 3. Dynamic Access Control (Checks URL for ?admin=true)
-# Normal users on your Google Site see zero upload options. Only you see it when using the admin link.
 is_admin = st.query_params.get("admin") == "true"
 
 if is_admin:
@@ -57,44 +41,51 @@ if is_admin:
             st.session_state.document_registry = []
         if "uploaded_filenames" not in st.session_state:
             st.session_state.uploaded_filenames = []
+        if "global_word_counts" not in st.session_state:
+            st.session_state.global_word_counts = Counter()
 
         if not uploaded_files and st.session_state.uploaded_filenames:
             st.session_state.document_registry = []
             st.session_state.uploaded_filenames = []
+            st.session_state.global_word_counts = Counter()
 
         if uploaded_files:
             current_names = [f.name for f in uploaded_files]
             if any(name not in current_names for name in st.session_state.uploaded_filenames):
                 st.session_state.document_registry = []
                 st.session_state.uploaded_filenames = []
+                st.session_state.global_word_counts = Counter()
                 
             new_files = [f for f in uploaded_files if f.name not in st.session_state.uploaded_filenames]
             if new_files:
-                with st.spinner("Building local semantic indices..."):
+                with st.spinner("Building local dynamic indexing matrix..."):
                     for uploaded_file in new_files:
                         try:
                             reader = PdfReader(uploaded_file)
-                            file_text = ""
-                            for page in reader.pages:
+                            for page_num, page in enumerate(reader.pages):
                                 text = page.extract_text()
                                 if text:
-                                    file_text += text + "\n"
-                            
-                            file_chunks = split_into_chunks(file_text)
-                            for chunk in file_chunks:
-                                profile = get_text_profile(chunk)
-                                st.session_state.document_registry.append({
-                                    "text": chunk,
-                                    "profile": profile
-                                })
+                                    tokens = tokenize(text)
+                                    if tokens:
+                                        page_word_counts = Counter(tokens)
+                                        for word in page_word_counts.keys():
+                                            st.session_state.global_word_counts[word] += 1
+                                            
+                                        st.session_state.document_registry.append({
+                                            "text": text,
+                                            "word_counts": page_word_counts,
+                                            "total_words": len(tokens),
+                                            "source": f"{uploaded_file.name} (Page {page_num + 1})"
+                                        })
                             st.session_state.uploaded_filenames.append(uploaded_file.name)
                         except Exception as parse_err:
                             st.error(f"Error parsing {uploaded_file.name}: {str(parse_err)}")
-                st.success(f"Indexed {len(st.session_state.uploaded_filenames)} files!")
+                st.success(f"Successfully indexed {len(st.session_state.uploaded_filenames)} manuals!")
 else:
-    # Ensure background memory structures exist for standard users even with the sidebar hidden
     if "document_registry" not in st.session_state:
         st.session_state.document_registry = []
+    if "global_word_counts" not in st.session_state:
+        st.session_state.global_word_counts = Counter()
 
 # 4. App Header & Branding
 st.title("Otimo Aero")
@@ -126,7 +117,6 @@ if user_query := st.chat_input("Enter your technical question here..."):
     with st.chat_message("assistant"):
         response_placeholder = st.empty()
         
-        # Normalize text to catch variations cleanly
         clean_q = user_query.lower().replace(" ", "").replace("-", "")
         
         # SCENARIO A: Resolving an active clarification request
@@ -134,8 +124,7 @@ if user_query := st.chat_input("Enter your technical question here..."):
             original_intent = st.session_state.pending_clarification
             st.session_state.pending_clarification = None  # Reset flag
             
-            # Reconstruct full context query string
-            user_query = f"{original_intent} for Rotax {user_query}"
+            user_query = f"{original_intent} for {user_query}"
             clean_q = user_query.lower().replace(" ", "").replace("-", "")
             
         # SCENARIO B: Catching a vague engine term that requires a qualifying question
@@ -168,49 +157,62 @@ To provide the correct technical clearances or procedure parameters, please spec
         
         # SCENARIO C: All filters clear, execute standard manual search
         else:
-            with st.spinner("Processing request via production gateway..."):
+            with st.spinner("Scanning manual indices..."):
                 try:
-                    # Look at the user's original intent before the variant clarification split
-                    history_context = ""
-                    if len(st.session_state.messages) > 2:
-                        recent_messages = st.session_state.messages[-3:-1]
-                        history_context = " ".join([m['content'] for m in recent_messages])
+                    query_tokens = tokenize(user_query)
+                    total_pages_in_registry = len(st.session_state.document_registry)
                     
-                    combined_search_terms = f"{user_query} {history_context}"
-                    query_profile = get_text_profile(combined_search_terms)
+                    matched_pages = []
                     
-                    scored_chunks = []
-                    for item in st.session_state.document_registry:
-                        score = score_chunk_universally(item["profile"], query_profile)
-                        if score > 0:
-                            scored_chunks.append((score, item["text"]))
+                    if total_pages_in_registry > 0 and query_tokens:
+                        for item in st.session_state.document_registry:
+                            page_score = 0.0
+                            page_word_counts = item["word_counts"]
+                            total_words = item["total_words"]
+                            
+                            for token in query_tokens:
+                                if token in page_word_counts:
+                                    tf = page_word_counts[token] / total_words
+                                    docs_with_token = st.session_state.global_word_counts.get(token, 1)
+                                    idf = math.log(total_pages_in_registry / docs_with_token) + 1.0
+                                    page_score += (tf * idf)
+                            
+                            if page_score > 0:
+                                matched_pages.append((page_score, item["text"], item["source"]))
                     
-                    scored_chunks.sort(key=lambda x: x[0], reverse=True)
-                    top_context = [chunk for score, chunk in scored_chunks[:10]]
-                    context_str = "\n---\n".join(top_context)
+                    # Sort pages by mathematical TF-IDF score
+                    matched_pages.sort(key=lambda x: x[0], reverse=True)
                     
-                    # Cleaned, structured system prompt with strict zero-hallucination mandate
-                    full_prompt = f"""You are the technical AI desk assistant for Otimo Aero, indexing official Rotax documentation.
+                    # AMBIGUITY GATE CHECK:
+                    # If the user asks a question but the keywords don't match any page with confidence,
+                    # or if the query is fundamentally too broad, trigger immediate clarification request.
+                    if not matched_pages or (len(matched_pages) > 1 and matched_pages[0][0] < 0.01):
+                        context_str = "No directly matching documentation found or query context is highly ambiguous."
+                    else:
+                        top_context = [text for score, text, source in matched_pages[:8]]
+                        context_str = "\n---\n".join(top_context)
+                    
+                    full_prompt = f"""You are the technical AI desk assistant for Otimo Aero, indexing official technical aircraft documentation.
 You output answers in a strict, professional, itemized layout. No conversational fluff, assumptions, or external baseline guesses.
 
-CRITICAL DISCIPLINE DIRECTIVE:
+CRITICAL DISCIPLINE DIRECTIVE FOR AIRWORTHINESS SAFETY:
 * You must answer the user's question relying EXCLUSIVELY on the provided manual extracts below.
-* DO NOT ask the user for an engine serial number. The engine model variant (e.g., 912 ULS) provided is entirely sufficient. Look directly at the extracts for the parameters matching that model.
-* If the exact procedure, consumable name, part number, torque specification, or value is missing or unclear within the manual extracts below, you must NOT invent an answer. Instead, explicitly prompt the user for alternative keywords or related component titles to refine the document search.
+* IF THE USER'S PROMPT IS AMBIGUOUS, OR IF THE PROVIDED EXTRACTS DO NOT CONTAIN AN EXACT, DEFINITIVE, UNAMBIGUOUS PROCEDURE MATCH FOR THE SPECIFIC SYSTEM ENQUIRED ABOUT, YOU MUST STOP.
+* If there is any ambiguity, you must NOT provide generic steps. Instead, use section 1 to ask a highly specific technical clarifying question to narrow down the precise component reference, chapter title, or parameter needed.
 
 Structure your response exactly like this:
 
 ### 1. QUICK SPEC / PROCEDURE
 * Provide the direct maintenance steps or technical values extracted from the text below. 
-* If the text does not contain a definitive answer or is ambiguous, ask the user a specific clarifying question to narrow down the exact component reference needed.
+* IF AMBIGUOUS OR DATA IS INSUFFICIENT, explicitly ask the user for the specific missing context or component identification needed to guarantee an accurate match.
 
 ### 2. PARTS & MANUAL DATA
 * List specific part numbers, tool codes, or manual chapter titles extracted from the text.
-* If missing due to insufficient or ambiguous documentation extracts, state: "Clarification required from user".
+* If missing due to an ambiguous query or text gaps, state: "Clarification required from user".
 
 ---
 MANUAL EXTRACTS:
-{context_str if context_str else 'No directly matching documentation found.'}
+{context_str}
 ---
 USER QUESTION: {user_query}"""
 
@@ -220,7 +222,6 @@ USER QUESTION: {user_query}"""
                         "Content-Type": "application/json"
                     }
                     
-                    # FIXED ROUTING MATRIX: Targets premium infrastructure nodes natively to eliminate 429 limits
                     data = {
                         "model": "meta-llama/llama-3.1-8b-instruct",
                         "messages": [{"role": "user", "content": full_prompt}],
