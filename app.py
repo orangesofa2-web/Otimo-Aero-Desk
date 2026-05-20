@@ -113,7 +113,7 @@ def ingest_pdf(uploaded_file):
             })
 
 # =====================================================
-# 8. PREMIUM OPENROUTER HANDSHAKE
+# 8. OPENROUTER PRODUCTION HANDSHAKE (LLAMA 3.1 8B)
 # =====================================================
 def call_llm(prompt: str):
     headers = {
@@ -122,7 +122,7 @@ def call_llm(prompt: str):
     }
     
     payload = {
-        "model": "anthropic/claude-3.5-sonnet",
+        "model": "meta-llama/llama-3.1-8b-instruct",
         "temperature": 0.0,
         "messages": [
             {
@@ -133,7 +133,11 @@ def call_llm(prompt: str):
                 )
             },
             {"role": "user", "content": prompt}
-        ]
+        ],
+        "providers": {
+            "order": ["Lepton", "Together"],
+            "allow_fallbacks": True
+        }
     }
     
     response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=120)
