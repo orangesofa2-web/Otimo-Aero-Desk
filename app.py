@@ -13,7 +13,7 @@ import time
 # 1. PAGE CONFIGURATION
 # =====================================================
 st.set_page_config(
-    page_title="Otimo Aero AI Desk",
+    page_title="Otimo Aero AI Technician",
     page_icon="✈️",
     layout="wide"
 )
@@ -263,7 +263,7 @@ if url_params.get("admin") == "true":
                 st.session_state.vector_index = None
                 st.session_state.vector_metadata = []
                 st.session_state.documents = []
-                st.session_state.active_topic = None
+                st.active_topic = None
                 st.rerun()
 
         st.divider()
@@ -278,7 +278,7 @@ if url_params.get("admin") == "true":
 # =====================================================
 # 9. MAIN CHAT DISPLAY
 # =====================================================
-st.title("Otimo Aero")
+st.title("Otimo Aero AI Technician")
 
 status_line = f"Workspace Status — Engine Profile: {st.session_state.active_engine if st.session_state.active_engine else 'NOT INITIALISED'}"
 if st.session_state.active_topic:
