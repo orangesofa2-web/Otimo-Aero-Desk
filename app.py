@@ -24,11 +24,9 @@ else:
 # Helper: Clean text into character-grams to extract root meanings across technical terms
 def get_text_profile(text):
     words = re.findall(r'\w+', text.lower())
-    # Generates a frequency map of terms and character overlaps for fuzzy technical matching
     profile = Counter(words)
     for word in words:
         if len(word) > 3:
-            # Adds sub-word roots (e.g., "pressur" from "pressure") to bridge technical text gaps
             for i in range(len(word) - 3):
                 profile[word[i:i+4]] += 0.5
     return profile
@@ -46,16 +44,14 @@ def split_into_chunks(text, size=500):
 # 3. Sidebar for PDF Upload & Index Processing with Deduplication
 with st.sidebar:
     st.header("Technical Reference Desk")
-    st.write("Upload any combination of technical manuals. The local semantic engine scales automatically.")
+    st.write("Upload manuals here. The local semantic engine scales automatically.")
     uploaded_files = st.file_uploader("Upload Manuals (PDF)", type=["pdf"], accept_multiple_files=True)
     
-    # Track states reliably
     if "document_registry" not in st.session_state:
-        st.session_state.document_registry = [] # Stores dicts of {"text": chunk, "profile": profile}
+        st.session_state.document_registry = []
     if "uploaded_filenames" not in st.session_state:
         st.session_state.uploaded_filenames = []
 
-    # Reset cache if files are entirely cleared from the widget
     if not uploaded_files and st.session_state.uploaded_filenames:
         st.session_state.document_registry = []
         st.session_state.uploaded_filenames = []
@@ -63,7 +59,6 @@ with st.sidebar:
     if uploaded_files:
         current_names = [f.name for f in uploaded_files]
         
-        # Remove chunks of files that were deleted from the widget selection
         if any(name not in current_names for name in st.session_state.uploaded_filenames):
             st.session_state.document_registry = []
             st.session_state.uploaded_filenames = []
@@ -92,18 +87,18 @@ with st.sidebar:
                     except Exception as parse_err:
                         st.error(f"Error parsing {uploaded_file.name}: {str(parse_err)}")
                         
-            st.success(f"Indexed {len(st.session_state.uploaded_filenames)} documentation files!")
+            st.success(f"Indexed {len(st.session_state.uploaded_filenames)} files!")
 
 # 4. App Header & Branding
 st.title("Otimo Aero")
-st.subheader("Technical Support Desk (Universal Semantic Engine)")
+st.subheader("Technical Support Desk v2")
 
 # 5. Initialize Chat History
 if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant", 
-            "content": "Hello. Your local semantic engine is ready. Drop any maintenance books or specs in the sidebar, and query anything universally."
+            "content": "Hello. Local semantic engine ready. Drop maintenance books or specs in the sidebar for concise, direct answers."
         }
     ]
 
@@ -123,10 +118,8 @@ if user_query := st.chat_input("Enter your technical question here..."):
         response_placeholder = st.empty()
         with st.spinner("Extracting matching data segments..."):
             try:
-                # Using current active model name to avoid 404 deprecation blocks
                 model = genai.GenerativeModel("gemini-2.5-flash")
                 
-                # Grade all chunks universally against user intent
                 query_profile = get_text_profile(user_query)
                 scored_chunks = []
                 
@@ -135,26 +128,28 @@ if user_query := st.chat_input("Enter your technical question here..."):
                     if score > 0:
                         scored_chunks.append((score, item["text"]))
                 
-                # Sort by highest match profile and pick top 5 distinct context blocks
                 scored_chunks.sort(key=lambda x: x[0], reverse=True)
                 top_context = [chunk for score, chunk in scored_chunks[:5]]
                 context_str = "\n---\n".join(top_context)
                 
-                # Two-part structured prompt prompt to always guarantee an actionable procedure response
+                # Sharp, ultra-concise prompt structure using direct bullet points
                 full_prompt = f"""
-                You are the expert AI technical assistant for Otimo Aero, a high-precision aviation maintenance and technical support business specializing in Rotax engines and light aircraft.
+                You are the expert AI technical assistant for Otimo Aero. 
+                You must be extremely concise, direct, and practical. No conversational filler or fluff.
                 
-                You must answer the user's request by strictly following this two-part structure:
+                Structure your answer exactly like this:
                 
-                ### 1. TECHNICAL PROCEDURE & OVERVIEW
-                First, explain the complete, standard technical process or specification requested using your baseline manufacturer engineering knowledge. Be precise with values, safety parameters, and standard aviation practices.
+                ### 1. QUICK SPEC / PROCEDURE
+                * Give the direct answer, tool, or physical process immediately using bullet points.
+                * Keep safety parameters or torque limits to 1-2 sharp lines.
                 
-                ### 2. DOCUMENTATION & CONSUMABLES RESEARCH
-                Second, deeply analyze the provided technical documentation fragments below. Search them specifically for exact part numbers, authorized consumables (pastes, lubricants, sealants), torque limits, or specific manual cross-references. State exactly what the uploaded text defines.
+                ### 2. PARTS & MANUAL DATA
+                * Extract only the exact part numbers, consumables, or manual chapters found in the text below. 
+                * If the specific part/paste name isn't mentioned in the text, state: "Not in uploaded files (using baseline)."
                 
                 ---
-                TECHNICAL RELEVANCE EXTRACTS FROM UPLOADED MANUALS:
-                {context_str if context_str else 'No direct documentation matches discovered in the local index.'}
+                MANUAL EXTRACTS:
+                {context_str if context_str else 'No direct documentation matches.'}
                 ---
                 
                 USER QUESTION: {user_query}
