@@ -20,7 +20,7 @@ if not OPENROUTER_API_KEY:
 
 # Helper: Tokenize text into clean lowercase alphanumeric tokens
 def tokenize(text):
-    return set(re.findall(r'\b[a-z0-9]{3,20}\b', text.lower()))
+    return re.findall(r'\b[a-z0-9]{3,20}\b', text.lower())
 
 # 3. Dynamic Access Control & Ingestion Core (URL ?admin=true)
 is_admin = st.query_params.get("admin") == "true"
@@ -59,7 +59,6 @@ if is_admin:
                                 if page_text and len(page_text.strip()) > 50:
                                     st.session_state.document_registry.append({
                                         "text": page_text,
-                                        "tokens": tokenize(page_text),
                                         "source": f"{uploaded_file.name} (Page {page_num + 1})"
                                     })
                             st.session_state.uploaded_filenames.append(uploaded_file.name)
@@ -77,7 +76,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant", 
-            "content": "Hello. Production engine active. Enter your technical query below for high-fidelity maintenance support."
+            "content": "Hello. Production engine active. Enter your technical query below for unthrottled, precise maintenance support."
         }
     ]
 if "pending_clarification" not in st.session_state:
@@ -138,39 +137,51 @@ To provide the correct technical clearances or procedure parameters, please spec
         else:
             with st.spinner("Analyzing manual layout filters..."):
                 try:
-                    query_tokens = tokenize(user_query)
+                    # Filter out generic model keywords from the ranking math to stop context dilution
+                    raw_tokens = tokenize(user_query)
+                    noise_terms = {"912", "uls", "ul", "series", "type", "rotax", "engine"}
+                    important_tokens = [t for t in raw_tokens if t not in noise_terms]
+                    
+                    if not important_tokens:
+                        important_tokens = raw_tokens
+
                     matched_pages = []
-                    
-                    # Core Action Words Extraction (e.g., "synchronization", "torque", "clearance")
-                    # Words that appear rarely across manuals but signify specific tasks
                     for item in st.session_state.document_registry:
-                        intersect_count = len(query_tokens.intersection(item["tokens"]))
-                        if intersect_count > 0:
-                            matched_pages.append((intersect_count, item["text"], item["source"]))
+                        text_lower = item["text"].lower()
+                        
+                        # High priority given to unique actions (e.g., synchronization, clearance, torque)
+                        action_hits = sum(10.0 for token in important_tokens if token in text_lower)
+                        # Low baseline priority for generic model terms
+                        model_hits = sum(0.1 for token in raw_tokens if token in text_lower and token in noise_terms)
+                        
+                        total_score = action_hits + model_hits
+                        if total_score > 0:
+                            matched_pages.append((total_score, item["text"], item["source"]))
                     
-                    # Sort by pure keyword matches, pulling top pages for the context window
+                    # Sort strictly by technical task relevance and grab the top 12 pages
                     matched_pages.sort(key=lambda x: x[0], reverse=True)
-                    top_context = [f"Source: {source}\nContent: {text}" for count, text, source in matched_pages[:12]]
+                    top_context = [f"Source: {source}\nContent: {text}" for score, text, source in matched_pages[:12]]
                     context_str = "\n\n---\n\n".join(top_context) if top_context else "No matching manual context found."
                     
-                    # Strict System prompt enforcing the Ambiguity Guard directly inside the premium model node
-                    full_prompt = f"""You are the lead technical AI desk assistant for Otimo Aero, indexing official multi-manual aircraft documentation.
-You output answers in a strict, professional, itemized layout. No conversational fluff, assumptions, or external baseline guesses.
+                    # Redesigned prompt forcing active step delivery instead of general reference shortcuts
+                    full_prompt = f"""You are the lead technical AI desk assistant for Otimo Aero, providing maintenance support directly to technicians working on aircraft.
+You output answers in a strict, professional, itemized layout. No conversational fluff, warnings about reading the manual, or meta-references to documents.
 
-CRITICAL DISCIPLINE DIRECTIVE FOR AIRWORTHINESS SAFETY:
-* You must answer the user's question relying EXCLUSIVELY on the provided manual extracts below.
-* IF THE USER'S PROMPT IS AMBIGUOUS, OR IF THE PROVIDED EXTRACTS DO NOT CONTAIN AN EXACT, DEFINITIVE, UNAMBIGUOUS PROCEDURE MATCH FOR THE SPECIFIC SYSTEM ENQUIRED ABOUT, YOU MUST IMMEDIATELY HALT.
-* If there is any ambiguity or data insufficiency, you must NOT provide generic steps. Instead, use section 1 to ask a highly specific technical clarifying question to narrow down the precise component reference, manual section, or model parameter needed.
+CRITICAL DISCIPLINE DIRECTIVE FOR TECHNICAL SUPPORT:
+* Your primary purpose is to help the user complete maintenance tasks SAFELY and SUCCESSFULLY right now. 
+* NEVER tell the user to "refer to Chapter X" or "consult the maintenance manual" for the steps. You ARE the manual interface. You must extract and output the literal, physical, step-by-step instructions contained in the extracts below.
+* If the provided manual extracts contain the actual sequential steps, specifications, clearances, or values, you MUST write them out in full detail under Section 1.
+* IF AND ONLY IF the exact step-by-step instructions or parameters are entirely absent from the extracts below, you must use Section 1 to state exactly what technical reference component or context is missing to fulfill the request.
 
 Structure your response exactly like this:
 
 ### 1. QUICK SPEC / PROCEDURE
-* Provide the direct maintenance steps or technical values extracted from the text below. 
-* IF AMBIGUOUS OR DATA IS INSUFFICIENT, explicitly ask the user for the specific missing context or component identification needed to guarantee an accurate match.
+* Provide the concrete, literal maintenance steps, checks, settings, or technical values extracted from the text below. Write them out fully so the technician can perform the work safely.
+* If the data is absent from the text, ask a clear technical question to find the right area.
 
 ### 2. PARTS & MANUAL DATA
-* List specific part numbers, tool codes, or manual chapter titles extracted from the text.
-* If missing due to an ambiguous query or text gaps, state: "Clarification required from user".
+* List specific part numbers, tool codes, or official manual chapter titles explicitly extracted from the text.
+* If missing due to text gaps, state: "Clarification required from user".
 
 ---
 MANUAL EXTRACTS:
