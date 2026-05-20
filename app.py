@@ -69,10 +69,6 @@ if "active_engine" not in st.session_state:
 if "active_topic" not in st.session_state:
     st.session_state.active_topic = None
 
-# Track which documents are currently active vs superceded
-if "active_manual_versions" not in st.session_state:
-    st.session_state.active_manual_versions = {}
-
 # Load local vector index into live container memory on startup if it exists
 if "vector_index" not in st.session_state:
     if os.path.exists(INDEX_PATH) and os.path.exists(METADATA_PATH):
@@ -81,19 +77,6 @@ if "vector_index" not in st.session_state:
             with open(METADATA_PATH, "r", encoding="utf-8") as f:
                 st.session_state.vector_metadata = json.load(f)
             st.session_state.documents = list(set(m["source"] for m in st.session_state.vector_metadata))
-            
-            # Re-evaluate versions on startup
-            active_versions = {}
-            for doc in st.session_state.documents:
-                # Match document type and revision/date tags (e.g., MML_912_Rev2 vs MML_912_Rev3)
-                match = re.match(r'^([a-zA-Z0-9_\-]+?)(?:_?[rR]ev(?:ision)?_?(\d+)|_?[eE]d(?:ition)?_?(\d+))?\.pdf$', doc)
-                if match:
-                    base_name, rev, ed = match.groups()
-                    version_num = int(rev or ed or 0)
-                    if base_name not in active_versions or version_num > active_versions[base_name]["version"]:
-                        active_versions[base_name] = {"file": doc, "version": version_num}
-            st.session_state.active_manual_versions = {v["file"]: True for v in active_versions.values()}
-            
         except Exception:
             st.session_state.vector_index = None
             st.session_state.vector_metadata = []
@@ -174,30 +157,16 @@ def send_pushover_alert(title: str, message: str):
 # =====================================================
 def rebuild_vector_database(uploaded_files):
     all_chunks = []
-    active_versions = {}
     
     for uploaded_file in uploaded_files:
         try:
-            filename = uploaded_file.name
             reader = PdfReader(uploaded_file)
-            
-            # Parse versioning info directly from file naming schema (e.g., manual_name_Rev3.pdf)
-            match = re.match(r'^([a-zA-Z0-9_\-]+?)(?:_?[rR]ev(?:ision)?_?(\d+)|_?[eE]d(?:ition)?_?(\d+))?\.pdf$', filename)
-            if match:
-                base_name, rev, ed = match.groups()
-                version_num = int(rev or ed or 0)
-                # Keep track of which file has the highest revision number for this specific manual type
-                if base_name not in active_versions or version_num > active_versions[base_name]["version"]:
-                    active_versions[base_name] = {"file": filename, "version": version_num}
-            else:
-                active_versions[filename] = {"file": filename, "version": 0}
-
             for page_num, page in enumerate(reader.pages):
                 page_text = page.extract_text()
                 if page_text and len(page_text.strip()) > 50:
                     all_chunks.append({
                         "text": page_text,
-                        "source": filename,
+                        "source": uploaded_file.name,
                         "page": page_num + 1
                     })
         except Exception as e:
@@ -232,10 +201,7 @@ def rebuild_vector_database(uploaded_files):
             st.session_state.vector_index = index
             st.session_state.vector_metadata = metadata_list
             st.session_state.documents = list(set(m["source"] for m in metadata_list))
-            
-            # Map out which documents are allowed to be searched based on latest numbers
-            st.session_state.active_manual_versions = {v["file"]: True for v in active_versions.values()}
-            st.success("Universal semantic database built and stored successfully with automated version sorting active!")
+            st.success("Universal semantic database built and stored successfully!")
             st.rerun()
 
 # =====================================================
@@ -298,20 +264,12 @@ if url_params.get("admin") == "true":
                 st.session_state.vector_metadata = []
                 st.session_state.documents = []
                 st.session_state.active_topic = None
-                st.session_state.active_manual_versions = {}
                 st.rerun()
 
         st.divider()
         st.metric("Indexed Manuals", len(st.session_state.documents))
         st.metric("Searchable Vector Units", len(st.session_state.vector_metadata) if st.session_state.vector_metadata else 0)
         
-        # Display active version filtering indicators to the administrator
-        if st.session_state.active_manual_versions:
-            st.caption("Active Version Control Allocations:")
-            for doc in st.session_state.documents:
-                status = "🟢 Current" if st.session_state.active_manual_versions.get(doc) else "🔴 Superceded (Filtered Out)"
-                st.caption(f"- `{doc}`: {status}")
-
         st.divider()
         st.subheader("Guardrail Budget Tracking")
         st.progress(min(st.session_state.daily_token_consumption / DAILY_TOKEN_BUDGET, 1.0))
@@ -463,18 +421,14 @@ To provide the correct technical clearances or procedure parameters, please spec
                     
                     if st.session_state.vector_index is not None and len(st.session_state.vector_metadata) > 0:
                         query_vector = np.array([get_embedding(search_query)]).astype('float32')
-                        distances, indices = st.session_state.vector_index.search(query_vector, 15)
+                        distances, indices = st.session_state.vector_index.search(query_vector, 12)
                         
                         matched_chunks = []
                         for score, idx in zip(distances[0], indices[0]):
                             if idx != -1 and idx < len(st.session_state.vector_metadata):
                                 if score < 1.3:
                                     chunk_data = st.session_state.vector_metadata[idx]
-                                    source_file = chunk_data['source']
-                                    
-                                    # VERSION GATE ACTIVE COUPLING: Only extract content if the source file is the current active generation
-                                    if st.session_state.active_manual_versions.get(source_file, False):
-                                        matched_chunks.append(f"Source: {source_file} - Page {chunk_data['page']}\nContent: {chunk_data['text']}")
+                                    matched_chunks.append(f"Source: {chunk_data['source']} - Page {chunk_data['page']}\nContent: {chunk_data['text']}")
                         
                         if matched_chunks:
                             context_str = "\n\n---\n\n".join(matched_chunks)
