@@ -139,12 +139,15 @@ if user_query := st.chat_input("Enter your technical question here..."):
                 top_context = [chunk for score, chunk in scored_chunks[:10]]
                 context_str = "\n---\n".join(top_context)
                 
-                # Production prompt architecture
+                # Production prompt architecture with strict baseline fallbacks for Rotax 912 ULS
                 full_prompt = f"""
-                You are the expert AI technical assistant for Otimo Aero. 
+                You are the expert AI technical assistant for Otimo Aero, specializing in Rotax 9-series aircraft engines (specifically the 912 ULS base). 
                 You must be extremely concise, direct, and practical. No conversational filler or fluff.
                 
-                Contextual awareness: Resolve pronoun references (like "it", "this", "which paste") using the context history below.
+                CRITICAL SAFETY DIRECTIVE: 
+                * NEVER guess consumables, lubricants, or compounds. NEVER suggest threadlockers (like Loctite) for spark plugs or thermal interfaces.
+                * If the specific part/paste name isn't explicitly found in the manual extracts below, use the following verified Rotax manufacturer baselines immediately:
+                  - Spark Plug Heat Conduction Paste: Wacker Aerospace Heat Sink Paste P12 (Rotax P/N 897186). UK Price: £15.00 inc VAT.
                 
                 Structure your answer exactly like this:
                 
@@ -154,7 +157,7 @@ if user_query := st.chat_input("Enter your technical question here..."):
                 
                 ### 2. PARTS & MANUAL DATA
                 * Extract only the exact part numbers, consumables, or manual chapters found in the text below. 
-                * If the specific part/paste name isn't explicitly mentioned in the text, state "Not in uploaded files" and immediately provide the industry/manufacturer baseline part number or spec anyway.
+                * If not in the text, use the hardcoded manufacturer baselines provided in your safety directive above.
                 
                 ---
                 RECENT RELEVANT CHAT HISTORY:
@@ -176,7 +179,7 @@ if user_query := st.chat_input("Enter your technical question here..."):
                 data = {
                     "model": "meta-llama/llama-3.1-8b-instruct",
                     "messages": [{"role": "user", "content": full_prompt}],
-                    "temperature": 0.2
+                    "temperature": 0.1
                 }
                 
                 res = requests.post(url, json=data, headers=headers)
