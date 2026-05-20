@@ -37,7 +37,8 @@ def score_chunk_universally(chunk_profile, query_profile):
     score = sum(chunk_profile[token] * query_profile[token] for token in intersection)
     return score
 
-def split_into_chunks(text, size=500):
+# FIXED: Increased chunk size to 1000 words to ensure complete manual tables/data sheets stay intact
+def split_into_chunks(text, size=1000):
     words = text.split()
     return [" ".join(words[i:i + size]) for i in range(0, len(words), size)]
 
@@ -128,11 +129,12 @@ if user_query := st.chat_input("Enter your technical question here..."):
                     if score > 0:
                         scored_chunks.append((score, item["text"]))
                 
+                # FIXED: Increased window to top 10 segments so no engineering cross-references get truncated
                 scored_chunks.sort(key=lambda x: x[0], reverse=True)
-                top_context = [chunk for score, chunk in scored_chunks[:5]]
+                top_context = [chunk for score, chunk in scored_chunks[:10]]
                 context_str = "\n---\n".join(top_context)
                 
-                # Sharp, ultra-concise prompt structure using direct bullet points
+                # FIXED: Upgraded instructions allowing immediate baseline answers when files use variant naming
                 full_prompt = f"""
                 You are the expert AI technical assistant for Otimo Aero. 
                 You must be extremely concise, direct, and practical. No conversational filler or fluff.
@@ -145,7 +147,7 @@ if user_query := st.chat_input("Enter your technical question here..."):
                 
                 ### 2. PARTS & MANUAL DATA
                 * Extract only the exact part numbers, consumables, or manual chapters found in the text below. 
-                * If the specific part/paste name isn't mentioned in the text, state: "Not in uploaded files (using baseline)."
+                * If the specific part/paste name isn't explicitly mentioned in the text, state "Not in uploaded files" and immediately provide the industry/manufacturer baseline part number or spec anyway.
                 
                 ---
                 MANUAL EXTRACTS:
