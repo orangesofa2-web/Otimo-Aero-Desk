@@ -90,8 +90,13 @@ def retrieve_context(query: str, top_k: int = 12):
         # Low baseline priority for generic model terms
         model_hits = sum(0.1 for token in raw_tokens if token in text_lower and token in noise_terms)
         
-        total_score = action_hits + model_hits
-        if total_score > 0:
+        # New Structural Boost: award points for actual numbered steps or procedures on the page
+        procedural_boost = 15.0 if re.search(r'\b(step|procedure|1\.|2\.|3\.)\b', text_lower) else 0.0
+        
+        total_score = action_hits + model_hits + procedural_boost
+        
+        # Hard threshold gate to filter out noisy summary or chapter index pages
+        if total_score > 20.0:
             scored_chunks.append((total_score, chunk))
 
     # Sort strictly by technical task relevance
