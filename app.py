@@ -18,7 +18,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Robust selector overrides targeting inner and outer framework components of st.chat_input
 st.markdown(
     """
     <style>
@@ -476,6 +475,10 @@ To provide the correct technical clearances or procedure parameters, please spec
                     if st.session_state.active_topic:
                         search_query = f"{st.session_state.active_topic} {user_query}"
                     
+                    # HYBRID SEARCH PIPELINE: Boost query keywords if diagnostic words are matched
+                    if any(word in user_query.lower() for word in ["test", "troubleshoot", "measure", "gauge", "fault"]):
+                        search_query += " diagnostics diagnostic master gauge tool testing procedure measurement parameters heavy maintenance manual MMH MML"
+
                     if st.session_state.vector_index is not None and len(st.session_state.vector_metadata) > 0:
                         query_vector = np.array([get_embedding(search_query)]).astype('float32')
                         distances, indices = st.session_state.vector_index.search(query_vector, 12)
