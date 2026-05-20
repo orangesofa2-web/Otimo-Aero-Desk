@@ -517,37 +517,38 @@ To provide the correct technical clearances or procedure parameters, please spec
                     # Update internal tracking state with estimated query overhead
                     st.session_state.daily_token_consumption += 9000
 
-                    # Adjust prompt rules to explicitly reinforce persistent topic memory
-                    topic_context_injection = ""
-                    if st.session_state.active_topic:
-                        topic_context_injection = f"The technician is explicitly working within the sub-context domain of: {st.session_state.active_topic}. Keep all tool lists, part numbers, and steps locked strictly onto this operational procedure."
+                   # Adjust prompt rules to explicitly reinforce persistent topic memory
+                    topic_context_injection = f"""
+                    CRITICAL WORKSPACE LIMITATION:
+                    You are explicitly assigned to find information ONLY for the following engine profile baseline: ROTAX {st.session_state.active_engine}.
+                    
+                    STRICT 2-STROKE BAN:
+                    You are STRICTLY FORBIDDEN from outputting any information related to 2-stroke engines. 
+                    If any manual extract or text chunk mentions: "503", "582", "618", "pre-mix", "oil injection pump cable", "two-stroke", "2-stroke", or "points ignition", you must IMMEDIATELY DISCARD that entire chunk of text. 
+                    Do not suggest any parts, tool sizes, or procedures related to those engines. 
+                    If the only text returned is 2-stroke data, you must output: "No 4-stroke maintenance data found for this query."
+                    """
 
                     final_prompt = f"""You are supporting a licensed aircraft maintenance technician.
-You must answer the user's question relying EXCLUSIVELY on the provided manual extracts below.
+You must answer the user's question relying EXCLUSIVELY on the provided manual extracts.
 
-CRITICAL WORKSPACE LIMITATION:
-You are explicitly assigned to find information ONLY for the following engine profile baseline: ROTAX {st.session_state.active_engine}.
-If the provided manual extracts contain text, tables, or notes that explicitly state they belong to a DIFFERENT engine type (e.g., if your active profile is 916IS, but the text says "for 912/914 Series only" or references "carburetors/floats"), you must STRICTLY IGNORE and completely discard that data. Do not list those parts, specs, or troubleshooting notes anywhere in your response.
+{topic_context_injection}
 
 CRITICAL DISCIPLINE DIRECTIVE FOR HYDRAULIC PRESSURE TESTING:
-If the user query is asking about testing "OIL PRESSURE" or "FUEL PRESSURE", you are STRICTLY FORBIDDEN from outputting any procedure that mentions "spark plugs", "pistons", "TDC", "cylinder heads", or "differential pressure drop tests". Those steps belong to a pneumatic compression test. If the manual extract contains that pneumatic information mixed on the same page, you must completely drop it and look strictly for the oil pressure sensor replacement, mechanical master pressure gauge hookup, or oil pump gallery inspection workflow.
+If the user query is asking about testing "OIL PRESSURE" or "FUEL PRESSURE", you are STRICTLY FORBIDDEN from outputting any procedure that mentions "spark plugs", "pistons", "TDC", "cylinder heads", or "differential pressure drop tests". 
 
-CRITICAL DISCIPLINE DIRECTIVE FOR TECHNICAL SUPPORT:
-1. Your primary purpose is to help the user complete maintenance tasks SAFELY and SUCCESSFULLY right now. 
-2. NEVER copy or output generic sentences that tell the user to \"refer to the maintenance manual\" or \"see Chapter X\". You are their interface to the manual. You must extract and output the actual, physical, sequential step-by-step instructions contained in the text.
-3. If the provided manual extracts contain the actual steps, tolerances, clearances, or values for your active engine model, you MUST write them out in explicit detail under Section 1 so the technician can complete the activity without opening another file.
-4. STRICT FILTERING FOR SECTION 2: Do NOT dump generic parts lists, internal sub-components, or exploded-view catalogs (e.g., float pins, internal gaskets, tiny washers) unless the manual explicitly states they must be *replaced* or *installed* during this specific maintenance task. Focus exclusively on the external tools, gauges, consumables (like specified Loctite grades or oils), and major line kits required to perform the workflow.
-5. STRING OUTPUT RESTRICTION: The manual extracts may contain the literal phrase \"Clarification required from user\" or automated checklist questions embedded in troubleshooting tables. Do NOT copy or output this phrase word-for-word into Section 1 or Section 2 unless you are genuinely unable to answer the user's question based on the text. Filter it out of your raw text extractions.
+CRITICAL DISCIPLINE DIRECTIVE FOR TOOLING:
+For 9-Series engines (912/914/915/916), ALWAYS verify: Spark plug socket MUST be 16mm (5/8"). If extract says 18mm, it is a 2-stroke legacy error—DISCARD IT and use 16mm.
 
 Structure your response exactly like this:
 
 ### 1. QUICK SPEC / PROCEDURE
-* Provide the concrete, sequential maintenance steps, checks, settings, or technical values extracted from the text below. Write them out fully so the technician can perform the work safely.
-* If the task text is missing from the extracts, explicitly ask a clear technical clarifying question to narrow down the missing details.
+* Provide the concrete, sequential maintenance steps, checks, settings, or technical values.
+* If the task text is missing from the extracts or contaminated by 2-stroke data, explicitly state that manual data for the 4-stroke engine is not present.
 
 ### 2. PARTS & MANUAL DATA
-* List specific part numbers, tool codes, or official manual chapter titles explicitly extracted from the text. Filter strictly according to Directive 4.
-* If missing due to text gaps, state: \"Manual data gaps present\".
+* List specific part numbers and tool codes.
+* If the data is missing or derived from an excluded 2-stroke chapter, state: \"Manual data gaps present\".
 
 ---
 MANUAL EXTRACTS:
