@@ -88,7 +88,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = [
         {
             "role": "assistant",
-            "content": "Welcome to the Otimo Aero Technical Support Desk. Please specify your engine type below to unlock the workspace panels and begin searching your engineering documentation."
+            "content": "Welcome to the Otimo Aero Technical Support Desk. Please specify your engine variant type below to unlock the workspace panels and begin searching your engineering documentation."
         }
     ]
 
@@ -183,7 +183,7 @@ def rebuild_vector_database(uploaded_files):
                 
             st.session_state.vector_index = index
             st.session_state.vector_metadata = metadata_list
-            st.session_state.documents = list(set(m["source"] for m in metadata_list))
+            st.session_state.documents = list(set(m["source"] for m in st.session_state.vector_metadata))
             st.success("Universal semantic database built and stored successfully!")
             st.rerun()
 
@@ -284,7 +284,7 @@ if user_query:
     with st.chat_message("user"):
         st.write(user_query)
 
-    # ENGINE CONTEXT GATE: Friendly welcome script displaying full variant listings
+    # ENGINE CONTEXT GATE: Direct welcome prompt detailing bracketed matching tokens
     if st.session_state.active_engine is None:
         engine_match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
         if engine_match:
@@ -297,20 +297,21 @@ if user_query:
             })
             st.rerun()
         else:
-            friendly_prompt = """### 🔧 Engine Variant Selection Required
-Welcome to the bench! To ensure your safety and provide completely flawless technical specs, I need to lock onto your precise engine configuration. 
+            friendly_prompt = """### 🔧 Engine Selection Required
 
-Rotax powerplants differ significantly across models—carburetor settings, electronic fuel injection wiring layouts, torque limits, and purging workflows are completely unique to each variant. Knowing exactly what is on your mount allows me to retrieve the perfect matches from your manuals without any dangerous overlap.
+Welcome to the workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration. 
 
-**Please type in which engine variant you are working on today:**
-* **912 UL** *(80 hp, Naturally Aspirated Carbureted)*
-* **912 ULS** *(100 hp, Naturally Aspirated Carbureted)*
-* **912 iS** *(100 hp, FADEC Fuel Injected)*
-* **914** *(115 hp, Turbocharged Carbureted)*
-* **915 iS** *(141 hp, Turbocharged FADEC Fuel Injected)*
-* **916 iS** *(160 hp, Turbocharged FADEC Fuel Injected)*
+Critical parameters—such as plug gaps, line-purging steps, fuel pressures, and torque values—vary significantly across model variants. Setting this filter ensures the search engine safely targets the correct technical manual documentation.
 
-*Simply reply with your variant model choice below to open up the workbench channels.*"""
+**Please reply with the specific engine type you are working on today:**
+* **912 UL** [912UL]
+* **912 ULS** [912ULS]
+* **912 iS** [912iS]
+* **914** [914]
+* **915 iS** [915iS]
+* **916 iS** [916iS]
+
+*Type your matching engine key code below to open the maintenance desk channels.*"""
             with st.chat_message("assistant"):
                 st.markdown(friendly_prompt)
             st.session_state.messages.append({"role": "user", "content": user_query})
