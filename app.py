@@ -18,6 +18,19 @@ st.set_page_config(
     layout="wide"
 )
 
+# Injection of custom CSS to explicitly force the chat input area to stick to 70% centered layout width
+st.markdown(
+    """
+    <style>
+    .stChatInputContainer {
+        max-width: 70% !important;
+        margin: 0 auto !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # =====================================================
 # 2. DUAL API CONFIGURATION SAFETY GATES
 # =====================================================
@@ -117,7 +130,6 @@ def invalid_configuration(query: str, engine_profile: str = None) -> bool:
     
     is_carb_query = any(t in q for t in carb_terms)
     
-    # Check current active profile if passed down from session states
     is_profile_injected = False
     if engine_profile:
         ep = engine_profile.lower().replace(" ", "").replace("-", "")
@@ -154,7 +166,6 @@ def send_pushover_alert(title: str, message: str):
 # =====================================================
 def rebuild_vector_database(uploaded_files):
     all_chunks = []
-    
     for uploaded_file in uploaded_files:
         try:
             reader = PdfReader(uploaded_file)
@@ -243,7 +254,6 @@ is_admin_mode = url_params.get("admin") == "true"
 if is_admin_mode:
     with st.sidebar:
         st.header("⚙️ Admin Control Panel")
-        
         if not st.session_state.documents:
             uploaded_files = st.file_uploader(
                 "Upload Technical Manuals",
@@ -288,7 +298,7 @@ def render_main_workspace():
         with st.chat_message(message["role"]):
             st.write(message["content"])
 
-# Structural width alignment gate based on URL admin context parameter status
+# Render chat workspace history stack
 if is_admin_mode:
     render_main_workspace()
 else:
@@ -297,22 +307,17 @@ else:
         render_main_workspace()
 
 # =====================================================
-# 10. CONSTANT CHAT INPUT RENDERING (FIXES VANISHING BAR)
+# 10. USER COMMAND RUNNER WITH ARCHITECTURE HOOKS
 # =====================================================
-# Formulating input container independent of computational loops to protect UI elements
-if is_admin_mode:
-    user_query = st.chat_input("Enter technical maintenance question...")
-else:
-    # Generates a separate structural column pair at the footer to lock typing frame alignment
-    left_input_margin, center_input_box, right_input_margin = st.columns([0.15, 0.70, 0.15])
-    with center_input_box:
-        user_query = st.chat_input("Enter technical maintenance question...")
+# CRITICAL FIX: chat_input is now called globally at the absolute end of the frame stream.
+# The custom global CSS block in Section 1 naturally keeps its visual display centered to 70%.
+user_query = st.chat_input("Enter technical maintenance question...")
 
 if user_query:
     current_time = time.time()
     time_passed = current_time - st.session_state.last_query_time
     
-    # Render user query inside aligned column structure if not admin
+    # Process the user query layout printing step
     if is_admin_mode:
         with st.chat_message("user"):
             st.write(user_query)
@@ -350,7 +355,7 @@ if user_query:
             st.stop()
 
     # TOPIC EXTRACTOR LOGIC
-    change_topic_match = re.search(r'(purge|oil|plug|spark|gap|torque|carb|balance|sync)', user_query.lower())
+    change_topic_match = re.search(r'(purge|oil|plug|spark|gap|torque|carb|balance|sync|pressure|fuel)', user_query.lower())
     if change_topic_match and "tool" not in user_query.lower():
         if "purge" in user_query.lower() or "oil" in user_query.lower():
             st.session_state.active_topic = "OIL PURGING"
@@ -358,6 +363,8 @@ if user_query:
             st.session_state.active_topic = "SPARK PLUG INSPECTION"
         elif "carb" in user_query.lower() or "sync" in user_query.lower() or "balance" in user_query.lower():
             st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
+        elif "pressure" in user_query.lower() or "fuel" in user_query.lower():
+            st.session_state.active_topic = "FUEL PRESSURE CHECK"
 
     # GUARDRAIL LAYER A: Cooldown Timer Enforcement
     if time_passed < COOLDOWN_SECONDS:
@@ -410,7 +417,7 @@ if user_query:
     st.session_state.last_query_time = current_time
     st.session_state.messages.append({"role": "user", "content": user_query})
 
-    # Prepare chat canvas position context variables for response streaming
+    # Set assistant panel placement variables
     if is_admin_mode:
         assistant_canvas = st.chat_message("assistant")
     else:
@@ -440,7 +447,7 @@ To provide the correct technical clearances or procedure parameters, please spec
             st.session_state.messages.append({"role": "assistant", "content": assistant_response})
             st.stop()
 
-        # SCENARIO C: Hardcoded Fuel Injection Component Gate (Fixes Casing Leak)
+        # SCENARIO C: Hardcoded Fuel Injection Component Gate
         if invalid_configuration(user_query, st.session_state.active_engine):
             assistant_response = """### 1. QUICK SPEC / PROCEDURE
 * **CRITICAL ERROR:** The engine model specified configuration platform utilizes electronic fuel injection and does not possess carburetors.
