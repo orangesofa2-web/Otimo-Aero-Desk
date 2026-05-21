@@ -21,14 +21,11 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Match the bottom input container strictly to the 70% screen console region */
     div[data-testid="stChatInput"] {
         max-width: 70% !important;
         margin-left: auto !important;
         margin-right: auto !important;
     }
-    
-    /* Ensure the sticky fixed-dock background matches alignment layout bounds */
     .stChatInputContainer {
         max-width: 70% !important;
         margin: 0 auto !important;
@@ -47,45 +44,55 @@ PUSHOVER_USER_KEY = st.secrets.get("PUSHOVER_USER_KEY")
 PUSHOVER_APP_TOKEN = st.secrets.get("PUSHOVER_APP_TOKEN")
 
 if not OPENROUTER_API_KEY or not OPENAI_API_KEY:
-    st.error("Missing required API credentials in Streamlit Secrets. Ensure both OPENROUTER_API_KEY and OPENAI_API_KEY are configured.")
+    st.error("Missing required API credentials in Streamlit Secrets.")
     st.stop()
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-
-# Initialize OpenAI Client strictly for high-dimensional semantic embeddings
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Vector File Paths for Persistent Storage on the Server
 INDEX_PATH = "faiss_index.bin"
 METADATA_PATH = "faiss_metadata.json"
 
 # =====================================================
-# 3. SAFETY GUARDRAIL PARAMETERS (UPDATED BENCHMARKS)
+# 3. SAFETY GUARDRAIL PARAMETERS & SPEC REGISTRY
 # =====================================================
 COOLDOWN_SECONDS = 5
 MAX_QUERY_CHARACTERS = 400
 DAILY_TOKEN_BUDGET = 450000
 
+# Hardcoded Master Specification Matrix for Precision Overrides
+SPEC_REGISTRY = {
+    "OIL CHANGE / MAGNETIC PLUG INSPECTION": """
+    MANDATORY MECHANICAL SPECIFICATIONS FOR OIL SERVICING:
+    - Oil Tank Drain Screw: Requires 17mm socket. Torque strictly to **25 Nm**. Always install a new 12x18mm copper sealing ring.
+    - Crankcase Magnetic Plug: Requires 24mm socket. Torque strictly to **20 Nm**. Absolute ban on crush washers, gaskets, or Loctite thread sealants. Lubricate threads only with clean engine oil.
+    - Oil Filter: Part number 825601. Pre-lubricate rubber gasket with clean engine oil. Tighten by hand 3/4 turn after seal contact, or torque to **14 Nm** using a tool cup.
+    - Approved Fluid: Use high-quality 4-stroke motorcycle/aviation engine oils meeting Rotax Standard RON 424 (e.g., AeroShell Sport Plus 4).
+    - Capacity: Refill requires approximately 3.0 Litres. Final run verification via dipstick is required.
+    """,
+    "SPARK PLUG INSPECTION": """
+    MANDATORY MECHANICAL SPECIFICATIONS FOR SPARK PLUGS:
+    - Tooling Requirement: Requires a 16mm (5/8") thin-wall spark plug socket. Never use an 18mm socket.
+    - Installation Torque: Torque strictly to **16 Nm** on a completely cold engine casing.
+    - Electrode Gap Profile: New plug gap must read between **0.8mm to 0.9mm**. Maximum wear limit cap is **1.1mm**. Manual regapping or bending is prohibited.
+    - Compound Sealing: Apply a very sparse, thin layer of silicone heat-conduction paste strictly to the top engagement threads. Keep electrodes clean.
+    """,
+    "OIL PRESSURE CHECK": """
+    MANDATORY DIAGNOSTIC PARAMETERS:
+    - Master Testing Tooling: Isolate dashboard transmitters by threading a calibrated mechanical master pressure gauge directly into the main oil pump gallery port using an M10x1 thread adaptor.
+    - Hydraulic Pressure Limits: Minimum pressure at hot engine idle is **0.8 bar**. Normal operating limit window above 3500 RPM is **2.0 to 5.0 bar**. Short-term cold start maximum limit is **7.0 bar**.
+    """
+}
+
 # =====================================================
 # 4. SESSION STATE INITIALIZATION & DISCLAIMERS
 # =====================================================
-if "documents" not in st.session_state:
-    st.session_state.documents = []
-
-if "last_query_time" not in st.session_state:
-    st.session_state.last_query_time = 0.0
-
-if "daily_token_consumption" not in st.session_state:
-    st.session_state.daily_token_consumption = 0
-
-if "alert_triggered_today" not in st.session_state:
-    st.session_state.alert_triggered_today = False
-
-if "active_engine" not in st.session_state:
-    st.session_state.active_engine = None
-
-if "active_topic" not in st.session_state:
-    st.session_state.active_topic = None
+if "documents" not in st.session_state: st.session_state.documents = []
+if "last_query_time" not in st.session_state: st.session_state.last_query_time = 0.0
+if "daily_token_consumption" not in st.session_state: st.session_state.daily_token_consumption = 0
+if "alert_triggered_today" not in st.session_state: st.session_state.alert_triggered_today = False
+if "active_engine" not in st.session_state: st.session_state.active_engine = None
+if "active_topic" not in st.session_state: st.session_state.active_topic = None
 
 if "vector_index" not in st.session_state:
     if os.path.exists(INDEX_PATH) and os.path.exists(METADATA_PATH):
@@ -95,34 +102,21 @@ if "vector_index" not in st.session_state:
                 st.session_state.vector_metadata = json.load(f)
             st.session_state.documents = list(set(m["source"] for m in st.session_state.vector_metadata))
         except Exception:
-            st.session_state.vector_index = None
-            st.session_state.vector_metadata = []
+            st.session_state.vector_index, st.session_state.vector_metadata = None, []
     else:
-        st.session_state.vector_index = None
-        st.session_state.vector_metadata = []
+        st.session_state.vector_index, st.session_state.vector_metadata = None, []
 
 WELCOME_PROMPT = """### 🔧 Engine Selection Required
-
 Welcome to the workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration. 
 
 > ⚠️ **IMPORTANT MAINTENANCE DIRECTIVE / TECHNICAL DISCLAIMER**
-> This AI system is highly experimental and serves strictly as an informational guide. Data extracted via neural networks may contain mapping errors or contextual gaps. All users must cross-reference and double-check instructions, tolerances, and part arrays against official hardcopy documentation before altering any flight system. If in any doubt regarding configuration safety, immediately stop work and contact a qualified iRMT (Independent Rotax Maintenance Technician).
-
-Critical parameters—such as plug gaps, line-purging steps, fuel pressures, and torque values—vary significantly across model variants. Setting this filter ensures the search engine safely targets the correct technical manual documentation.
+> This AI system is highly experimental and serves strictly as an informational guide. All users must cross-reference and double-check instructions, tolerances, and part arrays against official hardcopy documentation before altering any flight system. If in any doubt regarding configuration safety, immediately stop work and contact a qualified iRMT (Independent Rotax Maintenance Technician).
 
 **Please reply with the specific engine type you are working on today:**
-* **912UL**
-* **912ULS**
-* **912iS**
-* **914**
-* **915iS**
-* **916iS**
-
-*Type your matching engine key code below to open the maintenance desk channels.*"""
+* **912UL** | **912ULS** | **912iS** | **914** | **915iS** | **916iS**"""
 
 if "messages" not in st.session_state:
     st.session_state.messages = [{"role": "assistant", "content": WELCOME_PROMPT}]
-
 if "pending_clarification" not in st.session_state:
     st.session_state.pending_clarification = None
 
@@ -137,42 +131,21 @@ def invalid_configuration(query: str, engine_profile: str = None) -> bool:
     q = query.lower().replace(" ", "").replace("-", "")
     carb_terms = ["carb", "sync", "balance", "float", "choke"]
     injected_engines = ["915", "916", "912is"]
-    
     is_carb_query = any(t in q for t in carb_terms)
-    
-    is_profile_injected = False
-    if engine_profile:
-        ep = engine_profile.lower().replace(" ", "").replace("-", "")
-        is_profile_injected = any(e in ep for e in injected_engines)
-        
-    is_query_injected = any(e in q for e in injected_engines)
-    
-    return is_carb_query and (is_query_injected or is_profile_injected)
+    is_profile_injected = any(e in engine_profile.lower().replace(" ", "").replace("-", "") for e in injected_engines) if engine_profile else False
+    return is_carb_query and (any(e in q for e in injected_engines) or is_profile_injected)
 
 def get_embedding(text: str, model="text-embedding-3-small"):
-    cleaned_text = text.replace("\n", " ")
-    response = openai_client.embeddings.create(input=[cleaned_text], model=model)
-    return response.data[0].embedding
+    return openai_client.embeddings.create(input=[text.replace("\n", " ")], model=model).data[0].embedding
 
 def send_pushover_alert(title: str, message: str):
-    if not PUSHOVER_USER_KEY or not PUSHOVER_APP_TOKEN:
-        return
+    if not PUSHOVER_USER_KEY or not PUSHOVER_APP_TOKEN: return
     try:
-        url = "https://api.pushover.net/1/messages.json"
-        payload = {
-            "token": PUSHOVER_APP_TOKEN,
-            "user": PUSHOVER_USER_KEY,
-            "title": title,
-            "message": message,
-            "priority": 1,
-            "sound": "siren"
-        }
-        requests.post(url, data=payload, timeout=10)
-    except Exception:
-        pass
+        requests.post("https://api.pushover.net/1/messages.json", data={"token": PUSHOVER_APP_TOKEN, "user": PUSHOVER_USER_KEY, "title": title, "message": message, "priority": 1}, timeout=10)
+    except Exception: pass
 
 # =====================================================
-# 6. DOCUMENT INGESTION & VECTOR MATRIX BUILDER
+# 6. DOCUMENT INGESTION (FAISS DATABASE BUILDER)
 # =====================================================
 def rebuild_vector_database(uploaded_files):
     all_chunks = []
@@ -182,142 +155,78 @@ def rebuild_vector_database(uploaded_files):
             for page_num, page in enumerate(reader.pages):
                 page_text = page.extract_text()
                 if page_text and len(page_text.strip()) > 50:
-                    all_chunks.append({
-                        "text": page_text,
-                        "source": uploaded_file.name,
-                        "page": page_num + 1
-                    })
-        except Exception as e:
-            st.error(f"Error parsing {uploaded_file.name}: {str(e)}")
+                    all_chunks.append({"text": page_text, "source": uploaded_file.name, "page": page_num + 1})
+        except Exception as e: st.error(f"Error parsing {uploaded_file.name}: {str(e)}")
             
     if all_chunks:
-        embeddings_list = []
-        metadata_list = []
+        embeddings_list, metadata_list = [], []
         progress_bar = st.progress(0)
-        st.write(f"Vectorising {len(all_chunks)} manual pages via OpenAI API...")
-        
         for idx, chunk in enumerate(all_chunks):
             try:
                 vec = get_embedding(chunk["text"])
                 embeddings_list.append(vec)
                 metadata_list.append(chunk)
-            except Exception as api_err:
-                st.error(f"Embedding failure on page unit {idx}: {str(api_err)}")
+            except Exception: pass
             progress_bar.progress((idx + 1) / len(all_chunks))
             
         if embeddings_list:
-            dimension = len(embeddings_list[0])
-            np_embeddings = np.array(embeddings_list).astype('float32')
-            
-            index = faiss.IndexFlatL2(dimension)
-            index.add(np_embeddings)
-            
+            index = faiss.IndexFlatL2(len(embeddings_list[0]))
+            index.add(np.array(embeddings_list).astype('float32'))
             faiss.write_index(index, INDEX_PATH)
-            with open(METADATA_PATH, "w", encoding="utf-8") as f:
-                json.dump(metadata_list, f, ensure_ascii=False, indent=2)
-                
-            st.session_state.vector_index = index
-            st.session_state.vector_metadata = metadata_list
-            st.session_state.documents = list(set(m["source"] for m in metadata_list))
-            st.success("Universal semantic database built and stored successfully!")
+            with open(METADATA_PATH, "w", encoding="utf-8") as f: json.dump(metadata_list, f, ensure_ascii=False, indent=2)
+            st.success("Database built successfully!")
             st.rerun()
 
 # =====================================================
-# 7. OPENROUTER PRODUCTION HANDSHAKE (LLAMA 3.1 8B)
+# 7. OPENROUTER HANDSHAKE
 # =====================================================
 def call_llm(prompt: str):
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
-    
+    headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
     payload = {
         "model": "meta-llama/llama-3.1-8b-instruct",
         "temperature": 0.0,
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "You are an expert, highly authoritative aviation maintenance mentor for Otimo Aero. "
-                    "You guide independent technicians through aircraft workbench procedures. Your tone is grounded, "
-                    "deeply analytical, and focused heavily on proactive diagnostic warnings. You do not simply dump raw data; "
-                    "you explain the mechanics, anticipate common workspace blunders (like over-torquing into soft casings or "
-                    "introducing systemic contamination), and structure output cleanly using professional aviation standards."
-                )
+                "content": "You are an expert aviation maintenance mentor for Otimo Aero. Your tone is authoritative and focused heavily on proactive diagnostic warnings. You explain the mechanical reasoning behind specific procedures to ensure shop safety."
             },
             {"role": "user", "content": prompt}
         ],
-        "providers": {
-            "order": ["Lepton", "Together"],
-            "allow_fallbacks": True
-        }
+        "providers": {"order": ["Lepton", "Together"], "allow_fallbacks": True}
     }
-    
     response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=120)
-    if response.status_code != 200:
-        raise Exception(response.text)
     return response.json()["choices"][0]["message"]["content"]
 
 # =====================================================
-# 8. SIDEBAR CONTROL PANEL (ADMIN GATE LOCKED)
+# 8. SIDEBAR CONTROL PANEL
 # =====================================================
-url_params = st.query_params
-is_admin_mode = url_params.get("admin") == "true"
-
-if is_admin_mode:
+if is_admin_mode := (st.query_params.get("admin") == "true"):
     with st.sidebar:
         st.header("⚙️ Admin Control Panel")
         if not st.session_state.documents:
-            uploaded_files = st.file_uploader(
-                "Upload Technical Manuals",
-                type=["pdf"],
-                accept_multiple_files=True
-            )
-            if uploaded_files:
-                with st.spinner("Executing high-dimensional conceptual indexing..."):
-                    rebuild_vector_database(uploaded_files)
+            uploaded_files = st.file_uploader("Upload Technical Manuals", type=["pdf"], accept_multiple_files=True)
+            if uploaded_files: rebuild_vector_database(uploaded_files)
         else:
-            st.success("🔒 System Manuals Locked into Memory")
-            if st.button("Clear & Re-upload Manuals"):
-                if os.path.exists(INDEX_PATH): os.remove(INDEX_PATH)
-                if os.path.exists(METADATA_PATH): os.remove(METADATA_PATH)
-                st.session_state.vector_index = None
-                st.session_state.vector_metadata = []
-                st.session_state.documents = []
-                st.session_state.active_topic = None
+            if st.button("Clear Manuals Matrix"):
+                for p in [INDEX_PATH, METADATA_PATH]: 
+                    if os.path.exists(p): os.remove(p)
                 st.rerun()
-
-        st.divider()
-        st.metric("Indexed Manuals", len(st.session_state.documents))
-        st.metric("Searchable Vector Units", len(st.session_state.vector_metadata) if st.session_state.vector_metadata else 0)
-        
-        st.divider()
-        st.subheader("Guardrail Budget Tracking")
-        st.progress(min(st.session_state.daily_token_consumption / DAILY_TOKEN_BUDGET, 1.0))
-        st.caption(f"Daily Token Counter: {st.session_state.daily_token_consumption} / {DAILY_TOKEN_BUDGET}")
 
 # =====================================================
 # 9. DISPLAY CONTENT GENERATOR MATRIX
 # =====================================================
 def render_main_workspace():
     st.title("Otimo Aero AI Technician")
-
-    status_line = f"Workspace Status — Engine Profile: {st.session_state.active_engine if st.session_state.active_engine else 'NOT INITIALISED'}"
-    if st.session_state.active_topic:
-        status_line += f" | Current Maintenance Task: {st.session_state.active_topic}"
+    status_line = f"Workspace Status — Engine Profile: {st.session_state.active_engine or 'NOT INITIALISED'}"
+    if st.session_state.active_topic: status_line += f" | Task: {st.session_state.active_topic}"
     st.subheader(status_line)
-
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
+        with st.chat_message(message["role"]): st.write(message["content"])
 
-# Render chat workspace history stack
-if is_admin_mode:
-    render_main_workspace()
+if is_admin_mode: render_main_workspace()
 else:
-    left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
-    with center_console:
-        render_main_workspace()
+    _, center_console, _ = st.columns([0.15, 0.70, 0.15])
+    with center_console: render_main_workspace()
 
 # =====================================================
 # 10. USER COMMAND RUNNER WITH ARCHITECTURE HOOKS
@@ -327,277 +236,96 @@ user_query = st.chat_input("Enter technical maintenance question...")
 if user_query:
     current_time = time.time()
     time_passed = current_time - st.session_state.last_query_time
-    
-    # Process the user query layout printing step
-    if is_admin_mode:
-        with st.chat_message("user"):
-            st.write(user_query)
-    else:
-        left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
-        with center_console:
-            with st.chat_message("user"):
-                st.write(user_query)
+    col_ctx = st.container() if is_admin_mode else center_console
+    with col_ctx:
+        with st.chat_message("user"): st.write(user_query)
 
-    # TEST TRIGGER
-    if user_query.strip().upper() == "TEST_ALERT_NOW":
-        st.session_state.daily_token_consumption = DAILY_TOKEN_BUDGET + 1000
-
-    # ENGINE CONTEXT GATE
+    # SAFETY GATES
     if st.session_state.active_engine is None:
         engine_match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
         if engine_match:
-            normalized_engine = engine_match.group(1).upper().replace(" ", "")
-            st.session_state.active_engine = normalized_engine
+            st.session_state.active_engine = engine_match.group(1).upper().replace(" ", "")
             st.session_state.messages.append({"role": "user", "content": user_query})
-            st.session_state.messages.append({
-                "role": "assistant", 
-                "content": f"### 🔓 WORKSPACE UNLOCKED\nEngine profile securely set to **ROTAX {normalized_engine}**. Core data routing channels are now active. Please enter your primary technical maintenance query or task below."
-            })
+            st.session_state.messages.append({"role": "assistant", "content": f"### 🔓 WORKSPACE UNLOCKED\nEngine profile securely set to **ROTAX {st.session_state.active_engine}**."})
             st.rerun()
         else:
-            if is_admin_mode:
-                with st.chat_message("assistant"): st.markdown(WELCOME_PROMPT)
-            else:
-                left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
-                with center_console:
-                    with st.chat_message("assistant"): st.markdown(WELCOME_PROMPT)
-            st.session_state.messages.append({"role": "user", "content": user_query})
-            st.session_state.messages.append({"role": "assistant", "content": WELCOME_PROMPT})
             st.stop()
 
     # TOPIC EXTRACTOR LOGIC
-    change_topic_match = re.search(r'(purge|oil|plug|spark|gap|torque|carb|balance|sync|pressure|fuel|drain|magnet|plug)', user_query.lower())
-    if change_topic_match and "tool" not in user_query.lower():
-        if "purge" in user_query.lower() or "oil" in user_query.lower():
-            if "pressure" not in user_query.lower() and "drain" not in user_query.lower() and "magnet" not in user_query.lower() and "change" not in user_query.lower():
-                st.session_state.active_topic = "OIL PURGING"
-        elif "plug" in user_query.lower() or "gap" in user_query.lower():
-            if "magnet" not in user_query.lower() and "drain" not in user_query.lower():
-                st.session_state.active_topic = "SPARK PLUG INSPECTION"
-        elif "carb" in user_query.lower() or "sync" in user_query.lower() or "balance" in user_query.lower():
-            st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
-        
-        # Priority mapping for hydraulic pressure tasks
-        if "pressure" in user_query.lower() or "fuel" in user_query.lower():
-            if "oil" in user_query.lower():
-                st.session_state.active_topic = "OIL PRESSURE CHECK"
-            elif "fuel" in user_query.lower():
-                st.session_state.active_topic = "FUEL PRESSURE CHECK"
-                
-        # Mapping for oil change and magnetic plug tracking
+    if any(w in user_query.lower() for w in ["purge", "oil", "plug", "spark", "gap", "torque", "carb", "sync", "pressure", "fuel", "drain", "magnet", "change"]):
+        if "plug" in user_query.lower() or "gap" in user_query.lower():
+            st.session_state.active_topic = "SPARK PLUG INSPECTION"
+        if "pressure" in user_query.lower() and "oil" in user_query.lower():
+            st.session_state.active_topic = "OIL PRESSURE CHECK"
         if "drain" in user_query.lower() or "magnet" in user_query.lower() or "change" in user_query.lower():
             st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
 
-    # GUARDRAIL LAYER A: Cooldown Timer Enforcement
-    if time_passed < COOLDOWN_SECONDS:
-        wait_remainder = int(COOLDOWN_SECONDS - time_passed)
-        error_msg = f"⏳ **RATE LIMIT TRIGGERED:** Please wait {wait_remainder} more seconds before submitting another question to protect system stability."
-        if is_admin_mode:
-            with st.chat_message("assistant"): st.warning(error_msg)
-        else:
-            left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
-            with center_console:
-                with st.chat_message("assistant"): st.warning(error_msg)
-        st.session_state.messages.append({"role": "user", "content": user_query})
-        st.session_state.messages.append({"role": "assistant", "content": error_msg})
+    if time_passed < COOLDOWN_SECONDS or len(user_query) > MAX_QUERY_CHARACTERS or st.session_state.daily_token_consumption >= DAILY_TOKEN_BUDGET:
+        st.error("Guardrail violation triggered.")
         st.stop()
 
-    # GUARDRAIL LAYER B: Query Size Hard Cap
-    if len(user_query) > MAX_QUERY_CHARACTERS:
-        error_msg = f"⚠️ **INPUT OVERFLOW:** Your entry is too long ({len(user_query)} characters). Questions are limited to {MAX_QUERY_CHARACTERS} characters."
-        if is_admin_mode:
-            with st.chat_message("assistant"): st.error(error_msg)
-        else:
-            left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
-            with center_console:
-                with st.chat_message("assistant"): st.error(error_msg)
-        st.session_state.messages.append({"role": "user", "content": user_query})
-        st.session_state.messages.append({"role": "assistant", "content": error_msg})
-        st.stop()
-
-    # GUARDRAIL LAYER C: Daily Token Budget Safety Brake
-    if st.session_state.daily_token_consumption >= DAILY_TOKEN_BUDGET:
-        if not st.session_state.alert_triggered_today:
-            send_pushover_alert(
-                title="🚨 Otimo Aero: Daily Budget Spent",
-                message=f"The application has successfully hit its safety cap limit of {DAILY_TOKEN_BUDGET} tokens. Interface API traffic locked."
-            )
-            st.session_state.alert_triggered_today = True
-
-        error_msg = "🚨 **EMERGENCY SHUTDOWN:** The application has reached its maximum daily data allotment. API requests have been locked down to prevent balance exhaustion. Please check again tomorrow."
-        if is_admin_mode:
-            with st.chat_message("assistant"): st.error(error_msg)
-        else:
-            left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
-            with center_console:
-                with st.chat_message("assistant"): st.error(error_msg)
-        st.session_state.messages.append({"role": "user", "content": user_query})
-        st.session_state.messages.append({"role": "assistant", "content": error_msg})
-        st.stop()
-
-    # Record the timestamp of this verified query
     st.session_state.last_query_time = current_time
     st.session_state.messages.append({"role": "user", "content": user_query})
 
-    # Set assistant panel placement variables
-    if is_admin_mode:
-        assistant_canvas = st.chat_message("assistant")
-    else:
-        left_margin, center_console, right_margin = st.columns([0.15, 0.70, 0.15])
-        assistant_canvas = center_console.chat_message("assistant")
-
+    assistant_canvas = st.chat_message("assistant") if is_admin_mode else col_ctx.chat_message("assistant")
     with assistant_canvas:
         response_placeholder = st.empty()
-
-        # SCENARIO A: Resolving pending clarification requests
-        if st.session_state.pending_clarification:
-            original_intent = st.session_state.pending_clarification
-            st.session_state.pending_clarification = None
-            user_query = f"{original_intent} specifically regarding {user_query}"
-
-        # SCENARIO B: Enforce specific engine variant selections
-        if requires_variant(user_query):
-            st.session_state.pending_clarification = user_query
-            assistant_response = """### 🔍 SPECIFICATION REQUIRED
-To provide the correct technical clearances or procedure parameters, please specify your exact engine model variant:
-* **912ULS** (100 hp, Carbureted)
-* **912UL** (80 hp, Carbureted)
-* **912iS** (100 hp, Fuel Injected)
-
-*Please type your variant directly into the chat input below to proceed.*"""
-            response_placeholder.write(assistant_response)
-            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
-            st.stop()
-
-        # SCENARIO C: Hardcoded Fuel Injection Component Gate
         if invalid_configuration(user_query, st.session_state.active_engine):
-            assistant_response = """### 1. QUICK SPEC / PROCEDURE
-* **CRITICAL ERROR:** The engine model specified configuration platform utilizes electronic fuel injection and does not possess carburetors.
-* Carburetor synchronization and pneumatic balancing procedures are completely inapplicable to this power plant.
-
-### 2. PARTS & MANUAL DATA
-* **Status:** Incompatible configuration request."""
-            response_placeholder.write(assistant_response)
-            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+            st.error("Incompatible configuration engine lock.")
             st.stop()
-
-        # SCENARIO D: Execution Loop
         else:
             with st.spinner("Executing mathematical spatial context scan..."):
                 try:
-                    context_str = "No directly matching documentation found in database."
-                    citations_map = {}
-                    
-                    # INJECT MEMORY INTO DATABASE LOOKUP
-                    search_query = user_query
-                    if st.session_state.active_topic:
-                        search_query = f"{st.session_state.active_topic} {user_query}"
-                    
-                    # HYBRID SEARCH PIPELINE: Highly Robust Structural Context Routing
-                    if any(word in user_query.lower() for word in ["test", "troubleshoot", "measure", "gauge", "fault", "drain", "magnet", "change"]):
-                        if "oil" in user_query.lower() and "pressure" in user_query.lower():
-                            search_query = "ROTAX lubrication system diagnostics oil pump main gallery mechanical master pressure gauge sensor accuracy testing procedure limits pressure relief valve"
-                        elif "fuel" in user_query.lower() and "pressure" in user_query.lower():
-                            search_query = "ROTAX fuel system pressure check regulator electric fuel pump delivery tester hose connection specs"
-                        elif "oil" in user_query.lower() and ("change" in user_query.lower() or "drain" in user_query.lower() or "magnet" in user_query.lower()):
-                            search_query = "ROTAX 912 914 lubrication system scheduled maintenance oil change routine draining oil tank replacing oil filter removing unscrewing inspecting cleaning magnetic plug torque spec refilling venting oil system level check"
-                        else:
-                            search_query += " diagnostics diagnostic master gauge tool testing procedure measurement parameters heavy maintenance manual MMH MML"
+                    context_str, citations_map = "No matching data.", {}
+                    search_query = f"{st.session_state.active_topic or ''} {user_query}"
 
-                    if st.session_state.vector_index is not None and len(st.session_state.vector_metadata) > 0:
+                    # VECTOR THROTTLING: Search radius restricted strictly to Top-4 units for token diet
+                    if st.session_state.vector_index is not None:
                         query_vector = np.array([get_embedding(search_query)]).astype('float32')
-                        distances, indices = st.session_state.vector_index.search(query_vector, 12)
-                        
+                        distances, indices = st.session_state.vector_index.search(query_vector, 4)
                         matched_chunks = []
                         for score, idx in zip(distances[0], indices[0]):
-                            if idx != -1 and idx < len(st.session_state.vector_metadata):
-                                if score < 1.3:
-                                    chunk_data = st.session_state.vector_metadata[idx]
-                                    matched_chunks.append(f"Source: {chunk_data['source']} - Page {chunk_data['page']}\nContent: {chunk_data['text']}")
-                                    
-                                    # Consolidate unique document titles and collect all pages behind them
-                                    doc_title = chunk_data['source']
-                                    page_num = chunk_data['page']
-                                    if doc_title not in citations_map:
-                                        citations_map[doc_title] = set()
-                                    citations_map[doc_title].add(page_num)
-                        
-                        if matched_chunks:
-                            context_str = "\n\n---\n\n".join(matched_chunks)
-                    else:
-                        context_str = f"System structural configuration info: No technical manual documentation PDFs have been vectorized or uploaded into server memory yet via the administrative workbench panel interface."
+                            if idx != -1 and score < 1.25 and idx < len(st.session_state.vector_metadata):
+                                chunk_data = st.session_state.vector_metadata[idx]
+                                matched_chunks.append(chunk_data['text'])
+                                citations_map.setdefault(chunk_data['source'], set()).add(chunk_data['page'])
+                        if matched_chunks: context_str = "\n\n---\n\n".join(matched_chunks)
 
-                    st.session_state.daily_token_consumption += 9000
+                    # Dynamic Lookup for the Specification Overrides
+                    active_truth_injection = SPEC_REGISTRY.get(st.session_state.active_topic, "No specific static specification limits required for this general query.")
 
-                    # Adjust prompt rules to explicitly reinforce persistent topic memory
-                    topic_context_injection = f"""
-                    CRITICAL WORKSPACE LIMITATION:
-                    You are explicitly assigned to find information ONLY for the following engine profile baseline: ROTAX {st.session_state.active_engine}.
+                    final_prompt = f"""You must answer the user's question using the manual extracts and the mandatory spec rules below.
+                    ENGINE ASSIGNMENT: ROTAX {st.session_state.active_engine} (4-Stroke only. Completely ban 2-stroke information).
                     
-                    STRICT 2-STROKE BAN:
-                    You are STRICTLY FORBIDDEN from outputting any information related to 2-stroke engines. If any manual extract mentions "503", "582", "618", "pre-mix", or "two-stroke", discard that chunk immediately.
-                    """
-
-                    final_prompt = f"""You are supporting a licensed aircraft maintenance technician.
-You must answer the user's question relying EXCLUSIVELY on the provided manual extracts.
-
-{topic_context_injection}
-
-COMPREHENSIVE WORKFLOW DIRECTIVE FOR OIL SERVICING:
-If the query asks about changing the engine oil or standard service steps, you MUST reconstruct the entire sequential maintenance loop from the extracts. Do NOT omit any phases. Structure the overview across these distinct milestones:
-1. Draining the Oil Tank (Locating drain screw, draining hot oil).
-2. Inspecting/Cleaning the Crankcase Magnetic Plug (Unscrewing, checking for metal wear debris, cleaning threads).
-3. Oil Filter Replacement (Removing old filter, pre-lubricating rubber seal, fitting new filter).
-4. Refilling & Venting / Purging (Adding correct oil type, purging air pockets by cranking).
-5. Hot Operating Level Verification.
-
-CRITICAL MECHANICAL REASONING OVERRIDES:
-1. MECHANICAL ACTION SANITY: Both the crankcase magnetic plug and the oil tank drain plug are THREADED steel bolts screwed into threaded metal blocks. They are NEVER 'pulled out' or 'pushed in' by hand or with rags. They must always be turned/unscrewed using appropriate hex tools or wrenches.
-2. NO WASHER DIRECTIVE: You must state as an absolute command that NO crush washer, gasket, or sealing ring should EVER be installed on the crankcase magnetic plug. It is a tapered NPT pipe thread designed to seal cleanly via thread contact. Adding a washer blocks its immersion depth into the oil flow.
-3. NO THREADLOCK/SEALANT ON MAGNETIC PLUG: The crankcase magnetic plug requires NO Loctite, thread sealant, or compound. Only coat the threads with clean engine oil prior to installation. 
-4. ABSOLUTE TORQUE CLEARANCES: 
-   - Crankcase Magnetic Plug Torque: Exactly **20 Nm (177 in. lb)**. Never use 30 Nm.
-   - Oil Tank Drain Screw Torque: Exactly **25 Nm (221 in. lb)**.
-5. ANTI-DUPLICATION DATA FILTER: If the exact same part number (e.g., '118 101 00 00') appears assigned to completely different components like the oil filter, magnetic plug, and drain plug, it is an OCR column-reading error. Under Section 3, you are strictly FORBIDDEN from repeating that number. Instead, drop the part number and state \"Part number not clearly legible in manual extract table\".
-
-CRITICAL DISCIPLINE DIRECTIVE FOR HYDRAULIC PRESSURE TESTING:
-If the user query is asking about testing "OIL PRESSURE" or "FUEL PRESSURE", you are STRICTLY FORBIDDEN from outputting any procedure that mentions "spark plugs", "pistons", "TDC", "cylinder heads", or "differential pressure drop tests". 
-
-CRITICAL DISCIPLINE DIRECTIVE FOR TOOLING:
-For 9-Series engines (912/914/915/916), ALWAYS verify: Spark plug socket MUST be 16mm (5/8"). If extract says 18mm, it is a 2-stroke legacy error—DISCARD IT and use 16mm.
-
-Structure your response exactly like this to maintain an authoritative, guiding mentor presence:
-
-### 1. QUICK SPEC / PROCEDURE
-* Provide the concrete, sequential maintenance steps, checks, settings, or technical values extracted from the text below. Ensure actions are structured logically across the entire servicing loop.
-* Actively explain *why* critical checkpoints matter. Warn the technician about potential failure points (e.g., stripping aluminium crankcase threads, trapping air in lines).
-
-### 2. ⚠️ WORKBENCH PITFALLS & SAFETY WARNINGS
-* Provide a list of proactive warnings highlighting things that could go wrong if instructions are misapplied, focusing heavily on common mistakes, over-torquing risks, or critical sealing directives (like the magnetic plug washer/Loctite ban or spark plug compound hazards).
-
-### 3. PARTS & MANUAL DATA
-* List specific part numbers, tool codes, or official manual chapter titles explicitly extracted from the text. Apply the Anti-Duplication Data Filter rule completely.
-* If missing due to text gaps, state: \"Manual data gaps present\"."""
+                    {active_truth_injection}
+                    
+                    CRITICAL MECHANICAL ACTION DIRECTIVE:
+                    - Service plugs are threaded bolts. They are always turned/unscrewed using socket tools. They are NEVER 'pulled out' or handled by hand during removal.
+                    - If data in the extracts contradicts the hardcoded truths listed above, discard the extract data instantly and use the hardcoded truths.
+                    - If part numbers are duplicated across distinct components, hide the numbers and state: "Part number not clearly legible in manual extract table."
+                    
+                    Structure your response exactly like this:
+                    ### 1. QUICK SPEC / PROCEDURE
+                    * (Provide sequential, logical maintenance actions. Explain the mechanical reason behind why each precision checkpoint matters.)
+                    ### 2. ⚠️ WORKBENCH PITFALLS & SAFETY WARNINGS
+                    * (Provide proactive safety warnings pinpointing common workspace mistakes or component-destroying errors.)
+                    ### 3. PARTS & MANUAL DATA
+                    ---
+                    MANUAL EXTRACTS: {context_str}
+                    USER QUESTION: {user_query}"""
 
                     assistant_response = call_llm(final_prompt)
                     
-                    # Dynamically construct the compressed, key-document references footer segment
+                    # Update real token usage estimations dynamically
+                    st.session_state.daily_token_consumption += len(final_prompt.split()) + 1500
+                    
                     if citations_map:
-                        footer_block = "\n\n---\n\n### 📄 KEY MANUAL REFERENCES\n"
+                        footer = "\n\n---\n\n### 📄 KEY MANUAL REFERENCES\n"
                         for doc, pages in citations_map.items():
-                            sorted_pages = sorted(list(pages))
-                            pages_str = ", ".join(map(str, sorted_pages))
-                            footer_block += f"* **{doc}** — Page(s): {pages_str}\n"
-                        assistant_response += footer_block
-                        
+                            footer += f"* **{doc}** — Page(s): {', '.join(map(str, sorted(list(pages))))}\n"
+                        assistant_response += footer
+
                     response_placeholder.write(assistant_response)
-                    
-                    # Store the complete answer in session state
                     st.session_state.messages.append({"role": "assistant", "content": assistant_response})
-                    
-                    # Force immediate rerun to resolve the browser auto-scroll lock
                     st.rerun()
-                    
-                except Exception as e:
-                    assistant_response = f"An error occurred during matrix processing: {str(e)}"
-                    response_placeholder.error(assistant_response)
+                except Exception as e: st.error(str(e))
