@@ -369,7 +369,7 @@ if user_query:
     change_topic_match = re.search(r'(purge|oil|plug|spark|gap|torque|carb|balance|sync|pressure|fuel|drain|magnet|plug)', user_query.lower())
     if change_topic_match and "tool" not in user_query.lower():
         if "purge" in user_query.lower() or "oil" in user_query.lower():
-            if "pressure" not in user_query.lower() and "drain" not in user_query.lower() and "magnet" not in user_query.lower():
+            if "pressure" not in user_query.lower() and "drain" not in user_query.lower() and "magnet" not in user_query.lower() and "change" not in user_query.lower():
                 st.session_state.active_topic = "OIL PURGING"
         elif "plug" in user_query.lower() or "gap" in user_query.lower():
             if "magnet" not in user_query.lower() and "drain" not in user_query.lower():
@@ -385,7 +385,7 @@ if user_query:
                 st.session_state.active_topic = "FUEL PRESSURE CHECK"
                 
         # Mapping for oil change and magnetic plug tracking
-        if "drain" in user_query.lower() or "magnet" in user_query.lower():
+        if "drain" in user_query.lower() or "magnet" in user_query.lower() or "change" in user_query.lower():
             st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
 
     # GUARDRAIL LAYER A: Cooldown Timer Enforcement
@@ -493,14 +493,14 @@ To provide the correct technical clearances or procedure parameters, please spec
                     if st.session_state.active_topic:
                         search_query = f"{st.session_state.active_topic} {user_query}"
                     
-                    # HYBRID SEARCH PIPELINE: Advanced Context-Specific Query Rewriting
-                    if any(word in user_query.lower() for word in ["test", "troubleshoot", "measure", "gauge", "fault", "drain", "magnet"]):
+                    # HYBRID SEARCH PIPELINE: Highly Robust Structural Context Routing
+                    if any(word in user_query.lower() for word in ["test", "troubleshoot", "measure", "gauge", "fault", "drain", "magnet", "change"]):
                         if "oil" in user_query.lower() and "pressure" in user_query.lower():
                             search_query = "ROTAX lubrication system diagnostics oil pump main gallery mechanical master pressure gauge sensor accuracy testing procedure limits pressure relief valve"
                         elif "fuel" in user_query.lower() and "pressure" in user_query.lower():
                             search_query = "ROTAX fuel system pressure check regulator electric fuel pump delivery tester hose connection specs"
-                        elif "magnet" in user_query.lower() or "drain" in user_query.lower() or "plug" in user_query.lower():
-                            search_query = "ROTAX lubrication system oil change magnetic plug inspection torque limits oil pump casing threads"
+                        elif "oil" in user_query.lower() and ("change" in user_query.lower() or "drain" in user_query.lower() or "magnet" in user_query.lower()):
+                            search_query = "ROTAX 912 914 lubrication system scheduled maintenance oil change routine draining oil tank replacing oil filter removing unscrewing inspecting cleaning magnetic plug torque spec refilling venting oil system level check"
                         else:
                             search_query += " diagnostics diagnostic master gauge tool testing procedure measurement parameters heavy maintenance manual MMH MML"
 
@@ -543,13 +543,22 @@ You must answer the user's question relying EXCLUSIVELY on the provided manual e
 
 {topic_context_injection}
 
-CRITICAL INTEGRITY OVERRIDE - MAGNETIC OIL PLUG SAFETY CLEARANCE:
-1. NO WASHER DIRECTIVE: You must state as an absolute, non-negotiable command that NO crush washer, gasket, or sealing ring should EVER be installed on the Rotax 9-Series crankcase magnetic plug. It is a tapered NPT thread. Installing a washer prevents the magnet from immersing deep enough into the oil gallery flow, destroying its ability to collect ferric wear particles and causing structural thread/case failures.
-2. NO THREADLOCK/SEALANT DIRECTIVE: The crankcase magnetic plug requires NO Loctite, thread sealant, or compound. Only coat the threads with clean engine oil prior to assembly. Applying Loctite here is a dangerous safety failure because it blocks subsequent scheduled inspection removals and risk-contaminates the lubrication passages.
-3. ABSOLUTE TORQUE HARDCODING: 
-   - Crankcase Magnetic Plug Torque: Strictly **20 Nm (177 in. lb)**. Never use 30 Nm.
-   - Oil Tank Drain Screw Torque: Strictly **25 Nm (221 in. lb)**. 
-4. ANTI-DUPLICATION DATA FILTER: Scan the structural text extracts closely. If the exact same part number (e.g., '118 101 00 00') appears assigned to completely different components like the oil filter, magnetic plug, and drain plug, it is an OCR column-reading error. Under Section 3, you are strictly FORBIDDEN from repeating that number. Instead, drop the part number and state \"Part number not clearly legible in manual extract table\".
+COMPREHENSIVE WORKFLOW DIRECTIVE FOR OIL SERVICING:
+If the query asks about changing the engine oil or standard service steps, you MUST reconstruct the entire sequential maintenance loop from the extracts. Do NOT omit any phases. Structure the overview across these distinct milestones:
+1. Draining the Oil Tank (Locating drain screw, draining hot oil).
+2. Inspecting/Cleaning the Crankcase Magnetic Plug (Unscrewing, checking for metal wear debris, cleaning threads).
+3. Oil Filter Replacement (Removing old filter, pre-lubricating rubber seal, fitting new filter).
+4. Refilling & Venting / Purging (Adding correct oil type, purging air pockets by cranking).
+5. Hot Operating Level Verification.
+
+CRITICAL MECHANICAL REASONING OVERRIDES:
+1. MECHANICAL ACTION SANITY: Both the crankcase magnetic plug and the oil tank drain plug are THREADED steel bolts screwed into threaded metal blocks. They are NEVER 'pulled out' or 'pushed in' by hand or with rags. They must always be turned/unscrewed using appropriate hex tools or wrenches.
+2. NO WASHER DIRECTIVE: You must state as an absolute command that NO crush washer, gasket, or sealing ring should EVER be installed on the crankcase magnetic plug. It is a tapered NPT pipe thread designed to seal cleanly via thread contact. Adding a washer blocks its immersion depth into the oil flow.
+3. NO THREADLOCK/SEALANT ON MAGNETIC PLUG: The crankcase magnetic plug requires NO Loctite, thread sealant, or compound. Only coat the threads with clean engine oil prior to installation. 
+4. ABSOLUTE TORQUE CLEARANCES: 
+   - Crankcase Magnetic Plug Torque: Exactly **20 Nm (177 in. lb)**. Never use 30 Nm.
+   - Oil Tank Drain Screw Torque: Exactly **25 Nm (221 in. lb)**.
+5. ANTI-DUPLICATION DATA FILTER: If the exact same part number (e.g., '118 101 00 00') appears assigned to completely different components like the oil filter, magnetic plug, and drain plug, it is an OCR column-reading error. Under Section 3, you are strictly FORBIDDEN from repeating that number. Instead, drop the part number and state \"Part number not clearly legible in manual extract table\".
 
 CRITICAL DISCIPLINE DIRECTIVE FOR HYDRAULIC PRESSURE TESTING:
 If the user query is asking about testing "OIL PRESSURE" or "FUEL PRESSURE", you are STRICTLY FORBIDDEN from outputting any procedure that mentions "spark plugs", "pistons", "TDC", "cylinder heads", or "differential pressure drop tests". 
@@ -560,7 +569,7 @@ For 9-Series engines (912/914/915/916), ALWAYS verify: Spark plug socket MUST be
 Structure your response exactly like this to maintain an authoritative, guiding mentor presence:
 
 ### 1. QUICK SPEC / PROCEDURE
-* Provide the concrete, sequential maintenance steps, checks, settings, or technical values extracted from the text below. Ensure actions are structured logically (e.g., do not apply sealant or torque checks during the removal phase).
+* Provide the concrete, sequential maintenance steps, checks, settings, or technical values extracted from the text below. Ensure actions are structured logically across the entire servicing loop.
 * Actively explain *why* critical checkpoints matter. Warn the technician about potential failure points (e.g., stripping aluminium crankcase threads, trapping air in lines).
 
 ### 2. ⚠️ WORKBENCH PITFALLS & SAFETY WARNINGS
