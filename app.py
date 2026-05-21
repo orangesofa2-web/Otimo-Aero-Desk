@@ -135,7 +135,7 @@ def get_embedding(text: str, model="text-embedding-3-small"):
     return openai_client.embeddings.create(input=[text.replace("\n", " ")], model=model).data[0].embedding
 
 # =====================================================
-# 6. DOCUMENT INGESTION
+# 6. DOCUMENT INGESTION (OPTIMIZED SLIDING WINDOW)
 # =====================================================
 def rebuild_vector_database(uploaded_files):
     all_chunks = []
@@ -144,8 +144,19 @@ def rebuild_vector_database(uploaded_files):
             reader = PdfReader(uploaded_file)
             for page_num, page in enumerate(reader.pages):
                 page_text = page.extract_text()
-                if page_text and len(page_text.strip()) > 50:
-                    all_chunks.append({"text": page_text, "source": uploaded_file.name, "page": page_num + 1})
+                if page_text:
+                    # Clean up PDF formatting and split into paragraphs
+                    clean_text = re.sub(r'\s+', ' ', page_text)
+                    # Create highly efficient ~500 character sliding chunks
+                    words = clean_text.split()
+                    for i in range(0, len(words), 75):
+                        chunk = " ".join(words[i:i+100])
+                        if len(chunk.strip()) > 50:
+                            all_chunks.append({
+                                "text": chunk,
+                                "source": uploaded_file.name,
+                                "page": page_num + 1
+                            })
         except Exception as e: st.error(f"Error parsing {uploaded_file.name}: {str(e)}")
             
     if all_chunks:
@@ -168,20 +179,22 @@ def rebuild_vector_database(uploaded_files):
             st.rerun()
 
 # =====================================================
-# 7. OPENROUTER PRODUCTION HANDSHAKE
+# 7. OPENROUTER PRODUCTION HANDSHAKE (OPTIMIZED)
 # =====================================================
 def call_llm(prompt: str):
     headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
     payload = {
         "model": "meta-llama/llama-3.1-8b-instruct",
-        "temperature": 0.0,
+        "temperature": 0.2,
         "messages": [
             {
                 "role": "system",
                 "content": (
-                    "You are a professional aviation maintenance mentor for Otimo Aero. Your core priority is absolute accuracy and shop safety. "
-                    "You deliver grounded, highly specific diagnostic guidance. You explain the mechanical reasoning behind steps, "
-                    "proactively supply explicit dimensions, quantities, and fluid specifications, and warn of installation pitfalls."
+                    "You are a Senior iRMT LAA/BMAA Inspector and aviation maintenance mentor. "
+                    "You are standing directly beside an independent technician at the workbench. "
+                    "Your tone is authentic, supportive, and deeply informative. You do not act like a robot; "
+                    "you speak naturally, validate the complexity of the task, and proactively explain *why* specific "
+                    "mechanical tolerances and limits matter to keep them safe."
                 )
             },
             {"role": "user", "content": prompt}
@@ -284,27 +297,31 @@ if user_query:
                     # Dynamic Lookup for the Active Topic Specifications
                     active_truth_injection = SPEC_REGISTRY.get(st.session_state.active_topic, "GENERAL RULES: Proactively include precise torque limits, metric fluid quantities, and specific wrench/socket dimensions where relevant to this task.")
 
-                    final_prompt = f"""You are guiding an aircraft technician working on a ROTAX {st.session_state.active_engine} engine.
-                    You must answer using the manual extracts combined with the mandatory engineering rules below.
+                    final_prompt = f"""You are actively mentoring a technician working on a ROTAX {st.session_state.active_engine}. 
+                    Use the provided manual extracts and the Master Engineering Truths below to guide them.
 
                     {active_truth_injection}
 
-                    CRITICAL MECHANICS DIRECTIVE FOR ALL OPERATIONS:
-                    1. REMOVAL LOGIC SAFETY GATE: Service bolts/plugs are threaded metal fasteners. They are ALWAYS removed by turning/unscrewing them with standard wrenches or sockets. They are NEVER pulled, pried, or removed by hand. 
-                    2. TORQUE WRENCH SANITY GATE: Torque parameters and torque wrenches apply EXCLUSIVELY to the final reassembly tightening phase. You are STRICTLY FORBIDDEN from mentioning torque settings or torque wrenches during disassembly or removal steps.
-                    3. PROACTIVE DATA MANDATE: Do not speak in generalizations. You must explicitly output concrete fluid specifications, viscosity profiles, exact volume metrics, thread dimensions, and socket sizes if they are present in the hardcoded matrix or extracts.
-                    4. DATA INTEGRITY FILTER: If a part number is duplicated across completely separate components in the text extracts, treat it as a column parsing error. Hide that number under Section 3 and state: "Part number not clearly legible in manual extract table."
-                    5. BAN ALL TWO-STROKE INFO.
+                    AUTHORITATIVE OVERRIDE: The Master Engineering Truths listed above are absolute. They immediately supersede any conflicting part numbers or values found in the manual extracts.
 
-                    Structure your response exactly like this:
-                    ### 1. QUICK SPEC / PROCEDURE
-                    * (Provide complete, sequential maintenance steps divided logically into execution phases. Include exact tools, fluid types, and volumes directly in the steps. Explain *why* critical tolerances matter.)
-                    ### 2. ⚠️ WORKBENCH PITFALLS & SAFETY WARNINGS
-                    * (Provide highly specific safety warnings highlighting common mistakes, over-torquing risks, or part-destroying component traps.)
-                    ### 3. PARTS & MANUAL DATA
+                    PHASED WORKBENCH EXECUTION:
+                    1. DISASSEMBLY PHASE: Instruct the user to use standard hand tools (wrenches/sockets) to loosen and remove parts. 
+                    2. REASSEMBLY PHASE: Instruct the user to apply precise torque values only during final installation.
+                    3. DATA CLARITY: Output concrete fluid types, volumes, and thread dimensions. If a part number applies to multiple different components in the text, it is an OCR error; label it "Part number illegible" rather than guessing.
+
+                    Draft your response to the technician using this natural workflow:
+
+                    ### 1. THE WORKBENCH PROCEDURE
+                    * Provide a smooth, logically phased walkthrough of the task. Explain the mechanical reasoning behind critical steps so they understand *why* they are doing it.
+
+                    ### 2. ⚠️ INSPECTOR'S SAFETY BRIEF
+                    * Speak directly to the technician. Warn them about specific pitfalls (e.g., stripping soft aluminum casings, ignoring thread lubrication).
+
+                    ### 3. REQUIRED PARTS & SPECIFICATIONS
+                    * Itemize the tools, exact capacities, and verified part numbers they need to stage on their tray.
                     ---
-                    MANUAL EXTRACTS: {context_str}
-                    USER QUESTION: {user_query}"""
+                    REFERENCE EXTRACTS: {context_str}
+                    TECHNICIAN'S QUERY: {user_query}"""
 
                     assistant_response = call_llm(final_prompt)
                     st.session_state.daily_token_consumption += len(final_prompt.split()) + 1500
