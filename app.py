@@ -59,7 +59,7 @@ METADATA_PATH = "faiss_metadata.json"
 # =====================================================
 COOLDOWN_SECONDS = 5
 MAX_QUERY_CHARACTERS = 400
-DAILY_TOKEN_BUDGET = 1100000  # Hard ceiling keeping monthlies strictly below £1.00 inc VAT
+DAILY_TOKEN_BUDGET = 1100000 
 
 SPEC_REGISTRY = {
     "OIL CHANGE / MAGNETIC PLUG INSPECTION": {
@@ -100,11 +100,6 @@ SPEC_REGISTRY = {
     - **CRITICAL WARNING:**
         - **DO NOT** use a torque wrench on the oil filter. The specified 3/4 turn method achieves the correct gasket compression.
         - Over-tightening can damage the filter housing or make future removal extremely difficult.
-
----
-##### **UNIVERSAL SAFETY DIRECTIVES:**
-- **TORQUE WRENCHES:** Are for **TIGHTENING ONLY**. Never use a torque wrench to loosen fasteners. Use standard hand tools for all removal steps.
-- **REUSED PARTS:** The copper sealing ring for the Oil Tank Drain Screw is **NEVER** to be reused.
 """
     },
     "SPARK PLUG INSPECTION": {
@@ -163,11 +158,6 @@ SPEC_REGISTRY = {
 ###### **Part B: Cruise Power Verification (3500-4000 RPM)**
 - **This is a VERIFICATION step ONLY. NO adjustments are made at this power setting.**
 - The required pressure difference between carburetors is **perfectly 0 mbar (0.00 psi)**. There is no acceptable tolerance.
-
-- **CRITICAL SAFETY WARNING:**
-    - If the pressure reading is **anything other than 0 mbar** at this cruise power setting, the system is **NOT balanced** and the aircraft is **NOT airworthy**.
-    - **DO NOT** attempt to adjust carburetors at this RPM. A non-zero reading indicates a failure in the mechanical linkage, cables, or carburetor components.
-    - You MUST return to idle, shut down the engine, and diagnose/correct the underlying mechanical fault before repeating the entire synchronization procedure.
 """
     },
     "VAPOR LOCK AND HEAT SOAK DIAGNOSTICS": {
@@ -182,12 +172,6 @@ SPEC_REGISTRY = {
 - **Fuel System Pressure Limits:**
     - **Minimum Fuel Pressure:** **0.15 bar (2.2 psi)**.
     - **Maximum Fuel Pressure:** **0.40 bar (5.8 psi)**.
-
----
-##### **IMMEDIATE FLIGHT-LINE REMEDIES:**
-- **ELECTRIC FUEL PUMP:** Switch ON immediately to clear fuel line bubbles.
-- **THROTTLE POSITION:** Advance manually to **1400–1500 RPM** to pull fresh, cool fuel from the airframe tank into the hot engine compartment.
-- **CARBURETOR HEAT:** Ensure Carb Heat is **OFF** completely during taxi to avoid adding hot air to an already heat-soaked intake circuit.
 """
     },
     "DUAL LANE ELECTRICAL DIAGNOSTICS": {
@@ -204,12 +188,6 @@ SPEC_REGISTRY = {
 ##### **Engine Electrical Operation Limits:**
 - **Normal Operating Bus Voltage:** **13.5V to 14.2V** on both networks when engine RPM is above 2500.
 - **Minimum Low-Voltage Limit:** **12.0V**. Below this threshold, the ECU may drop sensors or fail to trigger fuel injectors correctly.
-- **Generator B Output Rating:** Nominal 12V DC, max 30A continuous capacity.
-
----
-##### **CRITICAL CHECKPOINTS:**
-- **LANE CHECK PROTOCOL:** Turn Lane switch OFF only at recommended test RPM (typically 2000 RPM). Ensure opposite Lane remains stable and engine does not stumble.
-- **GROUND BUS:** Inspect the main engine grounding strap. High impedance here causes immediate asymmetric lane voltage drops.
 """
     },
     "SCHEDULED 100HR / 200HR INSPECTION": {
@@ -225,13 +203,8 @@ SPEC_REGISTRY = {
 
 ---
 ##### **Fluid Capacities Matrix (Official Benchmarks):**
-- **Rotax 912 UL / ULS / 914:** Approx. 3.0 Litres baseline capacity (AeroShell Sport Plus 4).
+- **Rotax 912 UL / ULS / 914:** Approx. 3.0 Litres baseline capacity.
 - **Rotax 912iS / 915iS / 916iS (Dry Sump Network):** Approx. 3.0 Litres baseline tank capacity (Total expansion network holds 3.2 to 3.4 Litres max capacity depending on airframe hoses).
-
----
-##### **CRITICAL HARDWARE DIRECTIVES:**
-- **FUEL PUMP INSPECTION:** Measure active electrical current draw on primary and secondary electric fuel pumps.
-- **SPARK PLUGS:** Dual plugs per cylinder must have gaps checked and reset to **0.8mm - 0.9mm** limit benchmarks.
 """
     },
     "GENERAL MAINTENANCE INQUIRY": {
@@ -252,7 +225,6 @@ SPEC_REGISTRY = {
 if "documents" not in st.session_state: st.session_state.documents = []
 if "last_query_time" not in st.session_state: st.session_state.last_query_time = 0.0
 if "daily_token_consumption" not in st.session_state: st.session_state.daily_token_consumption = 0
-if "alert_triggered_today" not in st.session_state: st.session_state.alert_triggered_today = False
 if "active_engine" not in st.session_state: st.session_state.active_engine = None
 if "active_topic" not in st.session_state: st.session_state.active_topic = None
 
@@ -276,15 +248,10 @@ Welcome to the workbench! Before we look up any technical maintenance details, w
 * **912UL** | **912ULS** | **912iS** | **914** | **915iS** | **916iS**"""
 
 if "messages" not in st.session_state: st.session_state.messages = [{"role": "assistant", "content": WELCOME_PROMPT}]
-if "pending_clarification" not in st.session_state: st.session_state.pending_clarification = None
 
 # =====================================================
-# 5. TECHNICAL SAFETY LAYERS & CORE ENGINES
+# 5. CORE FUNCTIONS (EMBEDDINGS & LLM HANDSHAKE)
 # =====================================================
-def requires_variant(query: str) -> bool:
-    q = query.lower().replace(" ", "").replace("-", "")
-    return "912" in q and not any(v in q for v in ["uls", "ul", "is"])
-
 def invalid_configuration(query: str, engine_profile: str = None) -> bool:
     q = query.lower().replace(" ", "").replace("-", "")
     carb_terms = ["carb", "sync", "balance", "float", "choke"]
@@ -294,47 +261,6 @@ def invalid_configuration(query: str, engine_profile: str = None) -> bool:
 def get_embedding(text: str, model="text-embedding-3-small"):
     return openai_client.embeddings.create(input=[text.replace("\n", " ")], model=model).data[0].embedding
 
-# =====================================================
-# 6. DOCUMENT INGESTION
-# =====================================================
-def rebuild_vector_database(uploaded_files):
-    all_chunks = []
-    for uploaded_file in uploaded_files:
-        try:
-            reader = PdfReader(uploaded_file)
-            for page_num, page in enumerate(reader.pages):
-                page_text = page.extract_text()
-                if page_text:
-                    clean_text = re.sub(r'\s+', ' ', page_text)
-                    words = clean_text.split()
-                    for i in range(0, len(words), 75):
-                        chunk = " ".join(words[i:i+100])
-                        if len(chunk.strip()) > 50:
-                            all_chunks.append({"text": chunk, "source": uploaded_file.name, "page": page_num + 1})
-        except Exception as e: st.error(f"Error parsing {uploaded_file.name}: {str(e)}")
-            
-    if all_chunks:
-        embeddings_list, metadata_list = [], []
-        progress_bar = st.progress(0)
-        for idx, chunk in enumerate(all_chunks):
-            try:
-                vec = get_embedding(chunk["text"])
-                embeddings_list.append(vec)
-                metadata_list.append(chunk)
-            except Exception: pass
-            progress_bar.progress((idx + 1) / len(all_chunks))
-            
-        if embeddings_list:
-            index = faiss.IndexFlatL2(len(embeddings_list[0]))
-            index.add(np.array(embeddings_list).astype('float32'))
-            faiss.write_index(index, INDEX_PATH)
-            with open(METADATA_PATH, "w", encoding="utf-8") as f: json.dump(metadata_list, f, ensure_ascii=False, indent=2)
-            st.success("Universal database synchronized!")
-            st.rerun()
-
-# =====================================================
-# 7. OPENROUTER HANDSHAKE WITH INJECTABLE SYSTEM PROMPT
-# =====================================================
 def call_llm(system_instructions: str, user_context: str):
     headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
     payload = {
@@ -348,17 +274,19 @@ def call_llm(system_instructions: str, user_context: str):
     }
     response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=120)
     response_json = response.json()
-
-    if "error" in response_json:
-        raise Exception(f"LLM API Error: {response_json['error']}")
-    if not response_json.get("choices") or not response_json["choices"][0].get("message"):
-        raise Exception(f"Invalid LLM response structure: {response_json}")
-
     return response_json["choices"][0]["message"]["content"]
 
 # =====================================================
-# 8. SIDEBAR CONTROL PANEL
+# 6. WORKSPACE RENDERER
 # =====================================================
+def render_main_workspace():
+    st.title("Otimo Aero AI Technician")
+    status_line = f"Workspace Status — Engine Profile: {st.session_state.active_engine or 'NOT INITIALISED'}"
+    if st.session_state.active_topic: status_line += f" | Task: {st.session_state.active_topic}"
+    st.subheader(status_line)
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]): st.write(message["content"])
+
 if is_admin_mode := (st.query_params.get("admin") == "true"):
     with st.sidebar:
         st.header("⚙️ Admin Control Panel")
@@ -372,34 +300,15 @@ if is_admin_mode := (st.query_params.get("admin") == "true"):
                 st.rerun()
 
 # =====================================================
-# 9. DISPLAY CONTENT GENERATOR MATRIX
+# 7. USER COMMAND RUNNER & TOPIC ROUTER
 # =====================================================
-def render_main_workspace():
-    st.title("Otimo Aero AI Technician")
-    status_line = f"Workspace Status — Engine Profile: {st.session_state.active_engine or 'NOT INITIALISED'}"
-    if st.session_state.active_topic: status_line += f" | Task: {st.session_state.active_topic}"
-    st.subheader(status_line)
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]): st.write(message["content"])
+_, center_console, _ = st.columns([0.15, 0.70, 0.15])
+with center_console: render_main_workspace()
 
-if is_admin_mode: render_main_workspace()
-else:
-    _, center_console, _ = st.columns([0.15, 0.70, 0.15])
-    with center_console: render_main_workspace()
-
-# =====================================================
-# 10. USER COMMAND RUNNER WITH FALLBACK HARDENING LAYER
-# =====================================================
 user_query = st.chat_input("Enter technical maintenance question...")
 
 if user_query:
     current_time = time.time()
-    time_passed = current_time - st.session_state.last_query_time
-    col_ctx = st.container() if is_admin_mode else center_console
-    with col_ctx:
-        with st.chat_message("user"): st.write(user_query)
-
-    # ACTIVE SYSTEM REJECTION & TECHNICAL ESCALATION INTERCEPT CODES
     if st.session_state.active_engine is None:
         engine_match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
         if engine_match:
@@ -412,119 +321,52 @@ if user_query:
             st.rerun()
         else:
             st.session_state.messages.append({"role": "user", "content": user_query})
-            st.session_state.messages.append({
-                "role": "assistant", 
-                "content": "⚠️ **ENGINE PROFILE CONFIGURATION REQUIRED**\n\nI cannot diagnose telemetry or look up specifications until your exact engine model is locked in. Lane architecture and tolerances vary significantly between carburetor assemblies and fuel-injected EMS blocks.\n\n**Please specify your exact engine model to unlock the workbench:**\n* **912UL** | **912ULS** | **912iS** | **914** | **915iS** | **916iS**"
-            })
+            st.session_state.messages.append({"role": "assistant", "content": "⚠️ **ENGINE PROFILE CONFIGURATION REQUIRED**\n\nPlease specify engine: **912UL | 912ULS | 912iS | 914 | 915iS | 916iS**"})
             st.rerun()
 
-    # DUAL-INTELLIGENCE TOPIC ROUTER WITH FALLBACK TRIGGER HOOKS
-    if any(w in user_query.lower() for w in ["service", "hour", "100", "200", "schedule", "interval"]):
-        st.session_state.active_topic = "SCHEDULED 100HR / 200HR INSPECTION"
-    elif any(w in user_query.lower() for w in ["drop", "taxi", "heat", "boil", "soak", "lock", "800", "900"]):
-        st.session_state.active_topic = "VAPOR LOCK AND HEAT SOAK DIAGNOSTICS"
-    elif any(w in user_query.lower() for w in ["lane", "volt", "efis", "bus", "generator", "stator"]):
-        st.session_state.active_topic = "DUAL LANE ELECTRICAL DIAGNOSTICS"
-    elif any(w in user_query.lower() for w in ["carb", "sync", "balance", "float", "choke"]):
-        st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
-    elif any(w in user_query.lower() for w in ["plug", "gap", "spark"]):
-        st.session_state.active_topic = "SPARK PLUG INSPECTION"
-    elif any(w in user_query.lower() for w in ["pressure", "gauge"]) and "oil" in user_query.lower():
-        st.session_state.active_topic = "OIL PRESSURE CHECK"
-    elif any(w in user_query.lower() for w in ["drain", "magnet", "change", "oil"]):
-        st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
-    else:
-        st.session_state.active_topic = "GENERAL MAINTENANCE INQUIRY"
+    # TOPIC ROUTER
+    if any(w in user_query.lower() for w in ["service", "hour", "100", "200", "schedule", "interval"]): st.session_state.active_topic = "SCHEDULED 100HR / 200HR INSPECTION"
+    elif any(w in user_query.lower() for w in ["drop", "taxi", "heat", "boil", "soak", "lock", "800", "900"]): st.session_state.active_topic = "VAPOR LOCK AND HEAT SOAK DIAGNOSTICS"
+    elif any(w in user_query.lower() for w in ["lane", "volt", "efis", "bus", "generator", "stator"]): st.session_state.active_topic = "DUAL LANE ELECTRICAL DIAGNOSTICS"
+    elif any(w in user_query.lower() for w in ["carb", "sync", "balance", "float", "choke"]): st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
+    elif any(w in user_query.lower() for w in ["plug", "gap", "spark"]): st.session_state.active_topic = "SPARK PLUG INSPECTION"
+    elif any(w in user_query.lower() for w in ["pressure", "gauge"]) and "oil" in user_query.lower(): st.session_state.active_topic = "OIL PRESSURE CHECK"
+    elif any(w in user_query.lower() for w in ["drain", "magnet", "change", "oil"]): st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
+    else: st.session_state.active_topic = "GENERAL MAINTENANCE INQUIRY"
 
-    if time_passed < COOLDOWN_SECONDS or len(user_query) > MAX_QUERY_CHARACTERS or st.session_state.daily_token_consumption >= DAILY_TOKEN_BUDGET:
-        st.error("Guardrail condition triggered.")
-        st.stop()
-
-    st.session_state.last_query_time = current_time
     st.session_state.messages.append({"role": "user", "content": user_query})
 
-    assistant_canvas = st.chat_message("assistant") if is_admin_mode else col_ctx.chat_message("assistant")
-    with assistant_canvas:
-        response_placeholder = st.empty()
+    with center_console.chat_message("assistant"):
         if invalid_configuration(user_query, st.session_state.active_engine):
             st.error("Incompatible component configuration for this engine profile.")
             st.stop()
         else:
-            with st.spinner("Executing mathematical spatial context scan..."):
+            with st.spinner("Executing spatial context scan..."):
                 try:
-                    context_str, citations_map = "No matching data found.", {}
                     search_query = f"{st.session_state.active_engine} {st.session_state.active_topic or ''} {user_query}"
-
+                    context_str = "No specific match found."
+                    citations = {}
+                    
                     if st.session_state.vector_index is not None:
                         query_vector = np.array([get_embedding(search_query)]).astype('float32')
-                        distances, indices = st.session_state.vector_index.search(query_vector, 4)
-                        matched_chunks = []
-                        for score, idx in zip(distances[0], indices[0]):
-                            if idx != -1 and score < 1.25 and idx < len(st.session_state.vector_metadata):
-                                chunk_data = st.session_state.vector_metadata[idx]
-                                matched_chunks.append(chunk_data['text'])
-                                citations_map.setdefault(chunk_data['source'], set()).add(chunk_data['page'])
-                        if matched_chunks: context_str = "\n\n---\n\n".join(matched_chunks)
-                    
+                        dist, ind = st.session_state.vector_index.search(query_vector, 3)
+                        chunks = [st.session_state.vector_metadata[i]['text'] for i in ind[0] if i != -1]
+                        context_str = "\n\n---\n\n".join(chunks)
+
                     topic_data = SPEC_REGISTRY.get(st.session_state.active_topic)
-                    if topic_data:
-                        reasoning_points = "\n".join([f"- {point}" for point in topic_data["reasoning_points"]])
-                        specs_markdown = topic_data["specs_and_tooling_markdown"]
-                    else:
-                        reasoning_points = "Focus on safety and technical accuracy."
-                        specs_markdown = "Refer to official technical aviation manuals limits."
+                    reasoning_points = "\n".join([f"- {p}" for p in topic_data["reasoning_points"]]) if topic_data else ""
+                    specs_markdown = topic_data["specs_and_tooling_markdown"] if topic_data else "Refer to hardcopy manual."
 
-                    system_instructions = f"""You are 'Otimo Inspector', an expert AI mentor for aerospace technicians working on ROTAX engines. You are precise, highly technical, and safety-focused. Your job is to address the technician's actual maintenance issues clearly using the verified technical data provided.
-
-You MUST structure your response using this exact three-part format:
-
-### 1. THE WORKBENCH PROCEDURE
-- Provide a clear, step-by-step mechanical walkthrough to address the technician's query.
-- Use the 'MANDATORY REASONING POINTS' provided below to explain the engineering reason behind critical steps.
-- You may incorporate matching contextual details from the 'REFERENCE EXTRACTS', but the Mandatory Points and Specifications must always take absolute priority.
-- If the technician switches context to ask an adjacent question (e.g., asking about electrical lanes or gauge warnings mid-procedure), do not ignore it or force them back to a previous topic. Answer the active query step-by-step using the active data context provided.
-- **CRITICAL HALLUCINATION BAN:** You are completely forbidden from inventing fluid capacities, torque metrics, or tooling requirements out of thin air. If the required numbers are not explicitly listed in the 'MANDATORY SPECIFICATIONS MARKDOWN' or the 'REFERENCE EXTRACTS' for the active engine profile, state clearly that the values must be verified in the hardcopy Line Maintenance Manual. Do not guess or auto-complete numbers.
-- **CRITICAL INLINE SAFETY GATES:** If a step involves danger or high risk (such as working around live electrical buses, spinning propeller arcs, or systems under fluid pressure), you MUST call out that danger explicitly *at that exact step*. Immediately add a mandatory prompt instructing the user: "If you lack the confidence or specialized tools to proceed with this activity—as errors here may cause critical mechanical failure, severe personal harm, or death—STOP WORK immediately and contact a certified iRMT inspector."
-
-### 2. ⚠️ INSPECTOR'S SAFETY BRIEF
-- Highlight the 2-3 most critical, high-risk failure modes or mechanical blunders specific to this active task.
-- Emphasize what can go wrong if specifications are ignored.
-- **MANDATORY ESCALATION CLOSURE:** Conclude this section by advising the user that if they lack the confidence or specialized tools for any step, they must step back and contact a qualified iRMT technician.
-
-### 3. REQUIRED SPECS & TOOLING
-- Copy the text from the 'MANDATORY SPECIFICATIONS MARKDOWN' block provided in the user context exactly, 1:1, as a clean markdown list. Do not alter the numbers, units, or constraints.
-
-GENERAL COMPLIANCE RULES:
-- **FORMATTING:** Always ensure there is a clear blank line and three hashtags (###) before every major section header so the layout renders correctly on the workbench screen.
-- Focus entirely on the active maintenance topic. Do not pull in data from other unrelated tasks.
-- Do not mention, discuss, or provide instructions for two-stroke (2-stroke) engines or non-ROTAX systems.
-"""
-
-                    user_context = f"""---
-MANDATORY REASONING POINTS FOR: {st.session_state.active_topic or 'General Inquiry'}
-{reasoning_points}
----
-MANDATORY SPECIFICATIONS MARKDOWN FOR: {st.session_state.active_topic or 'General Inquiry'}
-(COPY THIS BLOCK EXACTLY INTO THE "REQUIRED SPECS & TOOLING" SECTION)
-{specs_markdown}
----
-TECHNICIAN'S QUERY: "{user_query}"
-REFERENCE EXTRACTS: {context_str}
-ENGINE: ROTAX {st.session_state.active_engine}
----
-"""
-                    assistant_response = call_llm(system_instructions, user_context)
-                    st.session_state.daily_token_consumption += len(system_instructions.split()) + len(user_context.split()) + 1500
+                    system_instructions = """You are 'Otimo Inspector', an expert aerospace AI mentor. Address maintenance tasks precisely. 
+                    1. THE WORKBENCH PROCEDURE: Step-by-step walkthrough.
+                    2. ⚠️ INSPECTOR'S SAFETY BRIEF: High-risk failure modes & mandatory iRMT escalation for lack of confidence.
+                    3. REQUIRED SPECS & TOOLING: Copy markdown table strictly.
+                    DO NOT invent numbers. If data is missing, state it must be verified in the hardcopy manual."""
                     
-                    if citations_map:
-                        footer = "\n\n---\n\n### 📄 KEY MANUAL REFERENCES\n"
-                        for doc, pages in citations_map.items():
-                            footer += f"* **{doc}** — Page(s): {', '.join(map(str, sorted(list(pages))))}\n"
-                        assistant_response += footer
-
-                    response_placeholder.write(assistant_response)
-                    st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+                    user_context = f"Topic: {st.session_state.active_topic}\n\nReasoning:\n{reasoning_points}\n\nSpecs:\n{specs_markdown}\n\nQuery: {user_query}"
+                    
+                    response = call_llm(system_instructions, user_context)
+                    st.session_state.messages.append({"role": "assistant", "content": response})
                     st.rerun()
-                except Exception as e: 
-                    st.error(f"An error occurred while generating the response: {str(e)}")
-                    st.stop()
+                except Exception as e:
+                    st.error(f"System Error: {str(e)}")
