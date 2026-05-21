@@ -170,6 +170,26 @@ SPEC_REGISTRY = {
     - You MUST return to idle, shut down the engine, and diagnose/correct the underlying mechanical fault before repeating the entire synchronization procedure.
 """
     },
+    "VAPOR LOCK AND HEAT SOAK DIAGNOSTICS": {
+        "reasoning_points": [
+            "Low taxi speeds drastically reduce cowled engine airflow. Exhaust heat radiates upward directly into the Bing carburetor bowls and fuel feed lines, causing localized fuel boiling (heat soak).",
+            "When fuel boils inside the delivery circuit, gas bubbles displace liquid fuel. This forces an extreme lean condition at idle, causing a severe RPM drop to 800-900 RPM and violent engine chattering.",
+            "Turning on the electric auxiliary fuel pump increases system pressure, raising the boiling point of the fuel and clearing vapor pockets by pushing them back through the return line."
+        ],
+        "specs_and_tooling_markdown": """
+- **Target Engine Profile:** Rotax 912 UL / 912 ULS carburetor configurations.
+- **Normal Idle Threshold:** Strictly **1400 RPM** (never allow a 912 series to idle long-term below 1300 RPM due to gearbox dog-clutch chattering).
+- **Fuel System Pressure Limits:**
+    - **Minimum Fuel Pressure:** **0.15 bar (2.2 psi)**.
+    - **Maximum Fuel Pressure:** **0.40 bar (5.8 psi)**.
+
+---
+##### **IMMEDIATE FLIGHT-LINE REMEDIES:**
+- **ELECTRIC FUEL PUMP:** Switch ON immediately to clear fuel line bubbles.
+- **THROTTLE POSITION:** Advance manually to **1400–1500 RPM** to pull fresh, cool fuel from the airframe tank into the hot engine compartment.
+- **CARBURETOR HEAT:** Ensure Carb Heat is **OFF** completely during taxi to avoid adding hot air to an already heat-soaked intake circuit.
+"""
+    },
     "DUAL LANE ELECTRICAL DIAGNOSTICS": {
         "reasoning_points": [
             "The Rotax fuel-injected 'iS' engines utilize an internal permanent magnet generator supplying independent electrical networks: Lane A and Lane B via Generator A (Internal power) and Generator B (External/Battery charge power).",
@@ -363,8 +383,10 @@ if user_query:
             })
             st.rerun()
 
-    # DYNAMIC DUAL-INTELLIGENCE TOPIC STATE ROUTER
-    if any(w in user_query.lower() for w in ["lane", "volt", "efis", "bus", "generator", "stator"]):
+    # HARDENED DUAL-INTELLIGENCE TOPIC STATE ROUTER WITH VAPOR LOCK DETECTION
+    if any(w in user_query.lower() for w in ["drop", "taxi", "heat", "boil", "soak", "lock", "800", "900"]):
+        st.session_state.active_topic = "VAPOR LOCK AND HEAT SOAK DIAGNOSTICS"
+    elif any(w in user_query.lower() for w in ["lane", "volt", "efis", "bus", "generator", "stator"]):
         st.session_state.active_topic = "DUAL LANE ELECTRICAL DIAGNOSTICS"
     elif any(w in user_query.lower() for w in ["carb", "sync", "balance", "float", "choke"]):
         st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
