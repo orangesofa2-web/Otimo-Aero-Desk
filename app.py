@@ -226,11 +226,11 @@ def rebuild_vector_database(uploaded_files):
 if "active_engine" not in st.session_state: st.session_state.active_engine = None
 if "active_topic" not in st.session_state: st.session_state.active_topic = None
 
-# RESTORED INITIAL WELCOME MESSAGE
+# UI FIX: Removed blockquotes (>) so the text renders in standard color, not green italics.
 if "messages" not in st.session_state: 
     st.session_state.messages = [{
         "role": "assistant", 
-        "content": "### 🔧 Engine Selection Required\nWelcome to the workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration.\n\n> ⚠️ **IMPORTANT MAINTENANCE DIRECTIVE / TECHNICAL DISCLAIMER**\n> This AI system is highly experimental and serves strictly as an informational guide. All users must cross-reference and double-check instructions, tolerances, and part arrays against official hardcopy documentation before altering any flight system. If in any doubt regarding configuration safety, immediately stop work and contact a qualified iRMT.\n\n**Please reply with the specific engine type you are working on today:**\n* **912UL** | **912ULS** | **912iS** | **914** | **915iS** | **916iS**"
+        "content": "### 🔧 Engine Selection Required\nWelcome to the workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration.\n\n🚨 **IMPORTANT MAINTENANCE DIRECTIVE / TECHNICAL DISCLAIMER** 🚨\n*This AI system is highly experimental and serves strictly as an informational guide. All users must cross-reference and double-check instructions, tolerances, and part arrays against official hardcopy documentation before altering any flight system. If in any doubt regarding configuration safety, immediately stop work and contact a qualified iRMT.*\n\n**Please reply with the specific engine type you are working on today:**\n* **912UL** | **912ULS** | **912iS** | **914** | **915iS** | **916iS**"
     }]
 
 # Load FAISS Index
@@ -255,40 +255,45 @@ if st.query_params.get("admin") == "true":
             st.rerun()
 
 # =====================================================
-# 6. MAIN WORKSPACE UI RENDER (RESTORED CLEAN HEADER)
+# 6. MAIN WORKSPACE UI RENDER
 # =====================================================
 _, center_console, _ = st.columns([0.15, 0.70, 0.15])
 
 with center_console:
     st.title("Otimo Aero AI Technician")
     
-    # RESTORED UI FIX: Standard markdown formatting instead of a green blockquote.
+    # Clean workspace status without green blockquotes
     engine_label = st.session_state.active_engine or "NOT INITIALISED"
     task_label = st.session_state.active_topic or "Awaiting Input"
     st.markdown(f"#### 🛠️ Workspace Status\n**Engine:** `{engine_label}` &nbsp;&nbsp;|&nbsp;&nbsp; **Task:** `{task_label}`")
-    st.divider() # Clean visual separation
+    st.divider()
     
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]): st.write(msg["content"])
 
 # =====================================================
-# 7. INPUT ROUTING & EXECUTION (RESTORED FULL ROUTER)
+# 7. INPUT ROUTING & EXECUTION (PERSISTENT FOCUS FIX)
 # =====================================================
-if st.session_state.active_engine is None:
-    user_query = st.chat_input("Enter Engine Type...")
-    if user_query:
-        match = re.search(r'(912\s*uls|915|916)', user_query.lower())
+# UI FIX: A single, root-level chat_input ensures React never unmounts the text box while you are typing!
+prompt_text = "Enter Engine Type (e.g., 912ULS, 915iS)..." if st.session_state.active_engine is None else "Enter maintenance question..."
+user_query = st.chat_input(prompt_text)
+
+if user_query:
+    if st.session_state.active_engine is None:
+        # Engine Lock Logic
+        match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
         if match:
-            st.session_state.active_engine = "915IS" if "915" in match.group(0) else match.group(0).upper().replace(" ", "")
+            raw_match = match.group(1).upper().replace(" ", "")
+            st.session_state.active_engine = "915IS" if raw_match == "915" else ("916IS" if raw_match == "916" else raw_match)
             st.session_state.messages.append({"role": "user", "content": user_query})
             st.session_state.messages.append({"role": "assistant", "content": f"### 🔓 WORKSPACE UNLOCKED\nEngine profile securely set to **ROTAX {st.session_state.active_engine}**."})
             st.rerun()
         else: 
-            st.warning("Please specify a valid engine profile: 912ULS, 915iS, 916iS")
-else:
-    user_query = st.chat_input("Enter maintenance question...")
-    if user_query:
-        # FULLY RESTORED TOPIC ROUTER
+            st.session_state.messages.append({"role": "user", "content": user_query})
+            st.session_state.messages.append({"role": "assistant", "content": "⚠️ **ENGINE PROFILE CONFIGURATION REQUIRED**\n\nPlease specify a valid engine profile: **912UL | 912ULS | 912iS | 914 | 915iS | 916iS**"})
+            st.rerun()
+    else:
+        # Question Routing Logic
         topic = "GENERAL MAINTENANCE INQUIRY"
         q_low = user_query.lower()
         if any(w in q_low for w in ["100", "200", "service", "schedule", "interval"]): topic = "SCHEDULED 100HR / 200HR INSPECTION"
@@ -320,7 +325,6 @@ else:
                         chunks = [st.session_state.vector_metadata[i]['text'] for i in ind[0] if i != -1 and i < len(st.session_state.vector_metadata)]
                         if chunks: context_str = "\n\n---\n\n".join(chunks)
 
-                    # RESTORED AGGRESSIVE SAFETY GATES
                     system_instructions = """You are an expert Rotax AI Technician. 
 1. THE WORKBENCH PROCEDURE: Provide concise steps. Incorporate relevant data from the REFERENCE EXTRACTS.
 - **CRITICAL INLINE SAFETY GATES:** If a step involves danger (spinning props, fluid pressure), call it out EXACTLY at that step. Add: "If you lack the confidence or specialized tools to proceed with this activity—as errors here may cause critical mechanical failure, severe personal harm, or death—STOP WORK immediately and contact a certified iRMT."
