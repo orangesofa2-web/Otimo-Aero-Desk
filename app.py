@@ -1,13 +1,14 @@
-import streamlit as st
-from pypdf import PdfReader
 import os
 import re
-import requests
 import json
+import sys
 import numpy as np
-from openai import OpenAI
+import requests
 import faiss
 import time
+import streamlit as st
+from pypdf import PdfReader
+from openai import OpenAI
 
 # =====================================================
 # 1. PAGE CONFIGURATION & INJECTED STRUCTURAL CSS
@@ -180,8 +181,10 @@ def rebuild_vector_database(uploaded_files):
             st.rerun()
 
 # =====================================================
-# 7. OPENROUTER HANDSHAKE (TEMPERATURE 0.2 FOR CADENCE)
+# 7. OPENROUTER HANDSHAKE WITH INJECTABLE SYSTEM PROMPT
 # =====================================================
+SYSTEM_PROMPT = """You are a Senior iRMT LAA/BMAA Inspector and aircraft workshop mentor. Your tone is natural, supportive, technically precise, and conversational. You do not talk like a generic bulleted engine list; you explain the step mechanics clearly to help the user complete the maintenance activity safely. Avoid mentioning any 2-stroke engine mechanics under any circumstances."""
+
 def call_llm(prompt: str):
     headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
     payload = {
@@ -190,11 +193,7 @@ def call_llm(prompt: str):
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "You are a Senior iRMT LAA/BMAA Inspector and aircraft workshop mentor. Your tone is natural, "
-                    "supportive, technically precise, and conversational. You do not talk like a generic bulleted engine list; "
-                    "you explain the step mechanics clearly to help the user complete the maintenance activity safely."
-                )
+                "content": SYSTEM_PROMPT
             },
             {"role": "user", "content": prompt}
         ],
@@ -334,5 +333,5 @@ if user_query:
 
                     response_placeholder.write(assistant_response)
                     st.session_state.messages.append({"role": "assistant", "content": assistant_response})
-                    st.rerun()
+                    st.st.rerun()
                 except Exception as e: st.error(str(e))
