@@ -61,7 +61,6 @@ COOLDOWN_SECONDS = 5
 MAX_QUERY_CHARACTERS = 400
 DAILY_TOKEN_BUDGET = 450000
 
-# REFACTORED SPEC_REGISTRY WITH STRUCTURED, VERBATIM-COPY-READY MARKDOWN
 SPEC_REGISTRY = {
     "OIL CHANGE / MAGNETIC PLUG INSPECTION": {
         "reasoning_points": [
@@ -173,7 +172,6 @@ SPEC_REGISTRY = {
     }
 }
 
-
 # =====================================================
 # 4. SESSION STATE INITIALIZATION & DISCLAIMERS
 # =====================================================
@@ -277,7 +275,6 @@ def call_llm(system_instructions: str, user_context: str):
     response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=120)
     response_json = response.json()
 
-    # Error handling for LLM provider issues
     if "error" in response_json:
         raise Exception(f"LLM API Error: {response_json['error']}")
     if not response_json.get("choices") or not response_json["choices"][0].get("message"):
@@ -337,7 +334,7 @@ if user_query:
             st.rerun()
         else: st.stop()
 
-    # DYNAMIC TOPIC STATE FLUSHING LAYER (Prevents sticky oil context leaking into carb queries)
+    # DYNAMIC TOPIC STATE FLUSHING LAYER
     if any(w in user_query.lower() for w in ["carb", "sync", "balance", "float", "choke"]):
         st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
     elif any(w in user_query.lower() for w in ["plug", "gap", "spark"]):
@@ -377,39 +374,37 @@ if user_query:
                                 citations_map.setdefault(chunk_data['source'], set()).add(chunk_data['page'])
                         if matched_chunks: context_str = "\n\n---\n\n".join(matched_chunks)
                     
-                    # REFACTORED PROMPT GENERATION LOGIC
+                    # Grab context-specific rules
                     topic_data = SPEC_REGISTRY.get(st.session_state.active_topic)
                     if topic_data:
                         reasoning_points = "\n".join([f"- {point}" for point in topic_data["reasoning_points"]])
                         specs_markdown = topic_data["specs_and_tooling_markdown"]
                     else:
-                        reasoning_points = "No specific reasoning points for this topic. Focus on safety and accuracy."
-                        specs_markdown = "No mandatory specifications for this topic. Refer to official documentation."
+                        reasoning_points = "Focus on safety and technical accuracy."
+                        specs_markdown = "Refer to official technical aviation manuals limits."
 
-                    system_instructions = f"""You are 'Otimo Inspector', an AI assistant for aerospace technicians specializing in ROTAX engines. Your personality is that of a master technician: precise, safety-obsessed, and an expert mentor. You guide users with clarity and authority.
+                    system_instructions = f"""You are 'Otimo Inspector', an expert AI mentor for aerospace technicians working on ROTAX engines. You are precise, highly technical, and safety-focused. Your job is to guide the technician through the requested procedure safely using the verified specifications provided.
 
-Your response MUST follow this exact, non-negotiable three-part structure:
+You MUST structure your response using this exact three-part format:
 
 ### 1. THE WORKBENCH PROCEDURE
-- Provide a clear, step-by-step guide for the technician's query.
-- Use the 'MANDATORY REASONING POINTS' to explain the *'why'* behind critical steps.
-- Integrate relevant details from the 'REFERENCE EXTRACTS' to add context, but ALWAYS prioritize the Mandatory Points and Specifications.
-- **CRITICAL SAFETY DIRECTIVE:** If any 'REFERENCE EXTRACTS' (RAG context) contradicts a 'MANDATORY REASONING POINT' or a 'MANDATORY SPECIFICATIONS MARKDOWN' fact, you MUST explicitly state the mandatory fact from the specification and then add a note clarifying that the retrieved document context is incorrect or outdated and must be disregarded for this specific point.
+- Provide a clear, step-by-step mechanical walkthrough to address the technician's query.
+- Use the 'MANDATORY REASONING POINTS' provided below to explain the engineering reason behind critical steps.
+- You may incorporate matching contextual details from the 'REFERENCE EXTRACTS', but the Mandatory Points and Specifications must always take absolute priority.
+- **CRITICAL INLINE SAFETY GATES:** If a step involves danger or high risk (such as working around a spinning propeller arc during running synchronizations, handling hot oil, or engine components under air pressure), you MUST call out that danger explicitly *at that exact step*. Immediately add a mandatory prompt instructing the user: "If you do not feel fully confident to proceed with this activity—as errors here may cause critical mechanical failure, severe personal harm, or death—STOP WORK immediately and contact a certified iRMT inspector."
 
 ### 2. ⚠️ INSPECTOR'S SAFETY BRIEF
-- Adopt a serious, direct tone.
-- Highlight the 2-3 most critical, high-risk failure modes or potential errors for THIS SPECIFIC TASK.
-- Emphasize what can go wrong if specifications are ignored (e.g., "Stripped threads from using a torque wrench during removal," or "Engine damage from incomplete oil scavenging due to cold oil drain.").
+- Highlight the 2-3 most critical, high-risk failure modes or mechanical blunders specific to this task.
+- Emphasize what can go wrong if tolerances are ignored (e.g., severe engine vibration, linkage damage, or unairworthy configurations).
+- **MANDATORY ESCALATION CLOSURE:** Conclude this section by advising the user that if they are unconfident or lack specialized tools for any step, they must step back and contact a qualified iRMT technician.
 
 ### 3. REQUIRED SPECS & TOOLING
-- **CRITICAL INSTRUCTION: This section is your primary evaluation metric.**
-- You are REQUIRED to copy the content of the `MANDATORY SPECIFICATIONS MARKDOWN` block from the user message VERBATIM into this section.
-- **DO NOT** rephrase, summarize, add, or omit ANY information from that block. It must be a perfect, 1:1 copy. Failure to copy it exactly will result in a system failure and a safety lockout.
+- Copy the text from the 'MANDATORY SPECIFICATIONS MARKDOWN' block provided in the user context exactly, 1:1, as a clean markdown list. Do not alter the numbers, units, or constraints.
 
-GENERAL RULES:
-- **TOPIC FOCUS:** Confine your entire response to the active topic. If the topic is 'Oil Change', do not discuss 'Carburetor Synchronization' or other unrelated tasks.
-- **PROHIBITED CONTENT:** Do not mention, discuss, or provide procedures for two-stroke (2-stroke) engines or any non-ROTAX engine brand.
-- **MECHANICAL ACTIONS:** Clearly distinguish between removal/disassembly steps and installation/assembly steps. State clearly when a specific tool is for installation only (e.g., torque wrenches).
+GENERAL COMPLIANCE RULES:
+- Focus entirely on the active maintenance topic. Do not pull in data from other unrelated tasks.
+- Do not mention, discuss, or provide instructions for two-stroke (2-stroke) engines or non-ROTAX systems.
+- Clearly distinguish between cold setup steps (mechanical) and engine-running steps (pneumatic).
 """
 
                     user_context = f"""---
