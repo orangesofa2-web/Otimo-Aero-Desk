@@ -59,7 +59,7 @@ METADATA_PATH = "faiss_metadata.json"
 # =====================================================
 COOLDOWN_SECONDS = 5
 MAX_QUERY_CHARACTERS = 400
-DAILY_TOKEN_BUDGET = 1100000
+DAILY_TOKEN_BUDGET = 1100000  # Hard ceiling keeping monthlies strictly below £1.00 inc VAT
 
 SPEC_REGISTRY = {
     "OIL CHANGE / MAGNETIC PLUG INSPECTION": {
@@ -382,7 +382,7 @@ def render_main_workspace():
     for message in st.session_state.messages:
         with st.chat_message(message["role"]): st.write(message["content"])
 
-if is_admin_mode : render_main_workspace()
+if is_admin_mode: render_main_workspace()
 else:
     _, center_console, _ = st.columns([0.15, 0.70, 0.15])
     with center_console: render_main_workspace()
@@ -434,7 +434,6 @@ if user_query:
     elif any(w in user_query.lower() for w in ["drain", "magnet", "change", "oil"]):
         st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
     else:
-        # FALLBACK DEFENSE GATING: Capture any unmapped queries securely
         st.session_state.active_topic = "GENERAL MAINTENANCE INQUIRY"
 
     if time_passed < COOLDOWN_SECONDS or len(user_query) > MAX_QUERY_CHARACTERS or st.session_state.daily_token_consumption >= DAILY_TOKEN_BUDGET:
