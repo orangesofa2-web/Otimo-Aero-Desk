@@ -61,38 +61,118 @@ COOLDOWN_SECONDS = 5
 MAX_QUERY_CHARACTERS = 400
 DAILY_TOKEN_BUDGET = 450000
 
+# REFACTORED SPEC_REGISTRY WITH STRUCTURED, VERBATIM-COPY-READY MARKDOWN
 SPEC_REGISTRY = {
-    "OIL CHANGE / MAGNETIC PLUG INSPECTION": """
-    MANDATORY MECHANICAL TRUTHS & FLUID SPECIFICATIONS:
-    - Removal Phase: Use standard hand wrenches or sockets. NEVER use a torque wrench to loosen fasteners.
-    - Fluid Condition: Oil must be drained when warm/hot (operating temperature) to ensure proper scavenging.
-    - Approved Oil Type: 4-stroke motorcycle or aviation engine oils meeting Rotax Standard RON 424 (e.g., AeroShell Sport Plus 4).
-    - Oil Refill Quantity: Requires approximately 3.0 Litres. Verify final levels using the dipstick after venting.
-    - Oil Tank Drain Screw: Requires 17mm socket. Tightening torque is strictly **25 Nm (221 in. lb)**. Fit a new copper ring.
-    - Crankcase Magnetic Plug: Requires 24mm socket. Tightening torque is strictly **20 Nm (177 in. lb)**. Never torque to 25 Nm or 30 Nm. Absolute ban on crush washers, gaskets, or thread sealants (no Loctite). Lubricate threads with clean engine oil only.
-    - Oil Filter: Part No. 825601. Lube gasket with engine oil, hand tighten 3/4 turn, or torque to **14 Nm (124 in. lb)** using cup tool.
-    """,
-    "SPARK PLUG INSPECTION": """
-    MANDATORY MECHANICAL TRUTHS & SPARK PLUG SPECIFICATIONS:
-    - Tool Dimension: Requires a 16mm (5/8") thin-wall spark plug socket.
-    - Reinstallation Torque: Tighten strictly to **16 Nm (142 in. lb)** on a cold engine casing.
-    - Electrode Clearance: New plug gap is **0.8 mm to 0.9 mm**. Absolute maximum wear limit is **1.1 mm**. Do not manually bend tabs.
-    - Sealing Pastes: Minimal film of silicone heat-conduction paste strictly on upper engagement threads. Keep electrodes dry.
-    """,
-    "OIL PRESSURE CHECK": """
-    MANDATORY DIAGNOSTIC PARAMETERS:
-    - Testing Method: Connect a calibrated mechanical master pressure gauge into the main oil pump gallery block port via M10x1 adaptor.
-    - Hydraulic Limits: Minimum hot idle is **0.8 bar (11.6 psi)**. Normal operation is **2.0 to 5.0 bar (29 to 73 psi)**. Peak cold cap is **7.0 bar (102 psi)**.
-    """,
-    "CARBURETOR SYNCHRONIZATION": """
-    MANDATORY PNEUMATIC SYNCHRONIZATION VALUES & CHECKPOINTS:
-    - Safety First: Stay well clear of the spinning propeller arc during running adjustments. Secure the aircraft wheels firmly.
-    - Pre-Requisite: Mechanical synchronization (cable slack adjustments) must be performed on a completely cold, non-running engine first.
-    - Idle Balancing Limits: Use a calibrated electronic differential pressure gauge (e.g., Carbmate / Synchro) or matching vacuum gauges. Maximum permissible pneumatic pressure variation between carburetor heads at an operating idle of 1800-2000 RPM is strictly **20 mbar (0.29 psi / 0.59 inHg)**. 
-    - Cruise Balancing Limits: Crosscheck synchronization at cruise power thresholds (3500 to 4000 RPM). Permissible variation here is strictly **0 mbar** variance (perfect alignment) via precise cable play adjustments.
-    - Bowden Cables: Verify all throttle cables possess a minimum free play of **1 mm (0.04 in)** when throttle levers are pinned against the physical idle stops.
-    """
+    "OIL CHANGE / MAGNETIC PLUG INSPECTION": {
+        "reasoning_points": [
+            "Draining oil when the engine is WARM/HOT is mandatory to ensure wear particles are suspended and drain out completely (scavenging). Cold oil is thick and will not drain fully.",
+            "Torque wrenches are precision calibration instruments for TIGHTENING ONLY. Using them for loosening permanently damages their internal mechanism and makes future torque readings unreliable, risking fastener failure.",
+            "The Crankcase Magnetic Plug uses a precision TAPERED seat for a metal-to-metal seal. Adding a washer or sealant will prevent a proper seal, causing leaks and potentially damaging the crankcase threads.",
+            "The Oil Tank Drain Screw (Sump) uses a soft copper sealing ring that is crushed on tightening. This crushing action creates the seal. It is a one-time-use item and MUST be replaced to prevent leaks.",
+            "Lubricating threads and gaskets with clean engine oil prevents thread galling (cold welding) and ensures the applied torque translates into the correct clamping force, not dissipated as friction."
+        ],
+        "specs_and_tooling_markdown": """
+- **Engine Pre-Condition:** Drain the oil only when **WARM or HOT**.
+- **Approved Oil Type:** 4-stroke engine oil meeting Rotax Standard RON 424 (e.g., AeroShell Sport Plus 4).
+- **Refill Quantity:** Approx. 3.0 Litres (final level MUST be verified via dipstick after a ground run).
+
+---
+##### **Component-Specific Data:**
+
+- **Oil Tank Drain Screw (Sump Plug):**
+    - **Removal Tooling:** Standard 17mm socket/wrench.
+    - **Installation Tooling:** Calibrated torque wrench.
+    - **Sealing:** **MUST** use a **NEW** copper sealing ring (one-time use part).
+    - **Installation Torque:** **25 Nm (221 in. lb)**.
+
+- **Crankcase Magnetic Plug (Tapered Seal):**
+    - **Removal Tooling:** Standard 24mm socket/wrench.
+    - **Installation Tooling:** Calibrated torque wrench.
+    - **Thread Prep:** Lubricate threads with a light film of clean engine oil before installation.
+    - **Installation Torque:** Strictly **20 Nm (177 in. lb)**.
+    - **CRITICAL WARNING:** This plug uses a metal-to-metal tapered seal.
+        - **DO NOT** use a washer, gasket, or sealing ring of any kind.
+        - **DO NOT** apply Loctite, thread sealant, or any other chemical compound.
+
+- **Oil Filter (Part No. 825701 or 825601):**
+    - **Tooling:** Standard oil filter wrench for removal and final tightening.
+    - **Gasket Prep:** Lubricate rubber gasket with a film of clean engine oil.
+    - **Installation:** Hand-tighten until gasket makes contact, then tighten a further **3/4 turn** using the filter wrench.
+    - **CRITICAL WARNING:**
+        - **DO NOT** use a torque wrench on the oil filter. The specified 3/4 turn method achieves the correct gasket compression.
+        - Over-tightening can damage the filter housing or make future removal extremely difficult.
+
+---
+##### **UNIVERSAL SAFETY DIRECTIVES:**
+- **TORQUE WRENCHES:** Are for **TIGHTENING ONLY**. Never use a torque wrench to loosen fasteners. Use standard hand tools for all removal steps.
+- **REUSED PARTS:** The copper sealing ring for the Oil Tank Drain Screw is **NEVER** to be reused.
+"""
+    },
+    "SPARK PLUG INSPECTION": {
+        "reasoning_points": [
+            "Torque settings for spark plugs are specified for a COLD engine casing to ensure thermal expansion doesn't lead to over-tightening, which can damage the cylinder head threads.",
+            "Heat-conduction paste improves heat transfer to the cylinder head, but it is electrically conductive. It must be kept away from the electrodes and center insulator to prevent misfires.",
+            "An incorrect electrode gap alters ignition timing and combustion efficiency, leading to poor performance and potential engine damage."
+        ],
+        "specs_and_tooling_markdown": """
+- **Engine Pre-Condition:** Must be a COLD engine for installation/torquing.
+- **Required Socket:** 16mm (5/8") thin-wall spark plug socket.
+- **Reinstallation Torque (Cold Engine):** Strictly **16 Nm (142 in. lb)**.
+- **Electrode Gap (New Plug):** 0.8 mm to 0.9 mm.
+- **Maximum Wear Limit (Used Plug):** 1.1 mm (replace plug if exceeded).
+- **Sealing Paste:** Minimal film of silicone heat-conduction paste on upper engagement threads ONLY. Keep electrodes and insulator clean and dry.
+"""
+    },
+    "OIL PRESSURE CHECK": {
+        "reasoning_points": [
+            "Using a calibrated mechanical master gauge provides the true oil pressure, bypassing any potential errors from the aircraft's electronic sensors or wiring.",
+            "Pressure checks must be performed at specified RPMs and temperatures to compare against baseline engineering values for a valid diagnosis."
+        ],
+        "specs_and_tooling_markdown": """
+- **Test Equipment:** Calibrated mechanical master pressure gauge with M10x1 adaptor.
+- **Connection Point:** Main oil pump gallery block port.
+- **Hydraulic Limits:**
+    - **Minimum (Hot Idle):** 0.8 bar (11.6 psi)
+    - **Normal Operation:** 2.0 to 5.0 bar (29 to 73 psi)
+    - **Maximum (Cold Start):** 7.0 bar (102 psi)
+"""
+    },
+    "CARBURETOR SYNCHRONIZATION": {
+        "reasoning_points": [
+            "Mechanical synchronization (adjusting cable slack) on a COLD engine is a mandatory prerequisite. Pneumatic balancing cannot fix an incorrect mechanical setup.",
+            "The idle RPM synchronization is the ONLY phase where a direct adjustment is made based on pneumatic readings. This has a specific tolerance (20 mbar).",
+            "The cruise power (3500-4000 RPM) check is a VERIFICATION-ONLY step with a non-negotiable, zero-tolerance (0 mbar) requirement. It is NOT an adjustment point.",
+            "Any pressure deviation at cruise power signifies a serious mechanical fault (e.g., cable stretch, bent linkage) that causes destructive harmonic vibrations. The procedure must be stopped and the fault corrected."
+        ],
+        "specs_and_tooling_markdown": """
+- **Safety Pre-Checks:** Secure aircraft, chock wheels, and ensure propeller arc is clear of all personnel and equipment.
+- **Test Equipment:** Calibrated electronic differential pressure gauge (e.g., Carbmate, Synchro-Mate).
+
+---
+##### **Step 1: Mechanical Synchronization (COLD ENGINE)**
+- This is a mandatory prerequisite.
+- Verify all throttle Bowden cables possess a **minimum free play of 1 mm (0.04 in)** against the physical idle stops to ensure butterflies are fully closed.
+
+---
+##### **Step 2: Pneumatic Balancing (WARM ENGINE)**
+
+###### **Part A: Idle Speed Adjustment (1800-2000 RPM)**
+- This is the primary adjustment step.
+- The maximum allowable pressure difference between carburetors is **20 mbar (0.29 psi)**.
+- Use the idle speed synchronization screw to balance the pressures within this tolerance.
+
+###### **Part B: Cruise Power Verification (3500-4000 RPM)**
+- **This is a VERIFICATION step ONLY. NO adjustments are made at this power setting.**
+- The required pressure difference between carburetors is **perfectly 0 mbar (0.00 psi)**. There is no acceptable tolerance.
+
+- **CRITICAL SAFETY WARNING:**
+    - If the pressure reading is **anything other than 0 mbar** at this cruise power setting, the system is **NOT balanced** and the aircraft is **NOT airworthy**.
+    - **DO NOT** attempt to adjust carburetors at this RPM. A non-zero reading indicates a failure in the mechanical linkage, cables, or carburetor components.
+    - You MUST return to idle, shut down the engine, and diagnose/correct the underlying mechanical fault before repeating the entire synchronization procedure.
+"""
+    }
 }
+
 
 # =====================================================
 # 4. SESSION STATE INITIALIZATION & DISCLAIMERS
@@ -115,7 +195,7 @@ if "vector_index" not in st.session_state:
     else: st.session_state.vector_index, st.session_state.vector_metadata = None, []
 
 WELCOME_PROMPT = """### 🔧 Engine Selection Required
-Welcome to the workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration. 
+Welcome to the workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration.
 
 > ⚠️ **IMPORTANT MAINTENANCE DIRECTIVE / TECHNICAL DISCLAIMER**
 > This AI system is highly experimental and serves strictly as an informational guide. All users must cross-reference and double-check instructions, tolerances, and part arrays against official hardcopy documentation before altering any flight system. If in any doubt regarding configuration safety, immediately stop work and contact a qualified iRMT (Independent Rotax Maintenance Technician).
@@ -183,24 +263,27 @@ def rebuild_vector_database(uploaded_files):
 # =====================================================
 # 7. OPENROUTER HANDSHAKE WITH INJECTABLE SYSTEM PROMPT
 # =====================================================
-SYSTEM_PROMPT = """You are a Senior iRMT LAA/BMAA Inspector and aircraft workshop mentor. Your tone is natural, supportive, technically precise, and conversational. You do not talk like a generic bulleted engine list; you explain the step mechanics clearly to help the user complete the maintenance activity safely. Avoid mentioning any 2-stroke engine mechanics under any circumstances."""
-
-def call_llm(prompt: str):
+def call_llm(system_instructions: str, user_context: str):
     headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
     payload = {
         "model": "meta-llama/llama-3.1-8b-instruct",
         "temperature": 0.2,
         "messages": [
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT
-            },
-            {"role": "user", "content": prompt}
+            {"role": "system", "content": system_instructions},
+            {"role": "user", "content": user_context}
         ],
         "providers": {"order": ["Lepton", "Together"], "allow_fallbacks": True}
     }
     response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=120)
-    return response.json()["choices"][0]["message"]["content"]
+    response_json = response.json()
+
+    # Error handling for LLM provider issues
+    if "error" in response_json:
+        raise Exception(f"LLM API Error: {response_json['error']}")
+    if not response_json.get("choices") or not response_json["choices"][0].get("message"):
+        raise Exception(f"Invalid LLM response structure: {response_json}")
+
+    return response_json["choices"][0]["message"]["content"]
 
 # =====================================================
 # 8. SIDEBAR CONTROL PANEL
@@ -293,37 +376,57 @@ if user_query:
                                 matched_chunks.append(chunk_data['text'])
                                 citations_map.setdefault(chunk_data['source'], set()).add(chunk_data['page'])
                         if matched_chunks: context_str = "\n\n---\n\n".join(matched_chunks)
+                    
+                    # REFACTORED PROMPT GENERATION LOGIC
+                    topic_data = SPEC_REGISTRY.get(st.session_state.active_topic)
+                    if topic_data:
+                        reasoning_points = "\n".join([f"- {point}" for point in topic_data["reasoning_points"]])
+                        specs_markdown = topic_data["specs_and_tooling_markdown"]
+                    else:
+                        reasoning_points = "No specific reasoning points for this topic. Focus on safety and accuracy."
+                        specs_markdown = "No mandatory specifications for this topic. Refer to official documentation."
 
-                    # Grab context-specific rules
-                    active_truth_injection = SPEC_REGISTRY.get(st.session_state.active_topic, "GENERAL RULES: Provide exact dimensions and tolerances where available.")
+                    system_instructions = f"""You are 'Otimo Inspector', an AI assistant for aerospace technicians specializing in ROTAX engines. Your personality is that of a master technician: precise, safety-obsessed, and an expert mentor. You guide users with clarity and authority.
 
-                    final_prompt = f"""You are actively mentoring an aircraft technician working on a ROTAX {st.session_state.active_engine}.
-                    You must build your response using the manual extracts combined with the mandatory engineering truth matrix rules below.
+Your response MUST follow this exact, non-negotiable three-part structure:
 
-                    {active_truth_injection}
+### 1. THE WORKBENCH PROCEDURE
+- Provide a clear, step-by-step guide for the technician's query.
+- Use the 'MANDATORY REASONING POINTS' to explain the *'why'* behind critical steps.
+- Integrate relevant details from the 'REFERENCE EXTRACTS' to add context, but ALWAYS prioritize the Mandatory Points and Specifications.
+- **CRITICAL SAFETY DIRECTIVE:** If any 'REFERENCE EXTRACTS' (RAG context) contradicts a 'MANDATORY REASONING POINT' or a 'MANDATORY SPECIFICATIONS MARKDOWN' fact, you MUST explicitly state the mandatory fact from the specification and then add a note clarifying that the retrieved document context is incorrect or outdated and must be disregarded for this specific point.
 
-                    STRICT COGNITIVE SEPARATION RULES:
-                    1. TOPIC CONTEXT ISOLATION: The technician's query may have changed. Read the 'TECHNICIAN'S QUERY' line carefully. If the user is asking about CARBURETORS, you are strictly FORBIDDEN from using or talking about oil tank drain plug torques, copper washers, or oil filters. Keep your workspace completely clean.
-                    2. CRITICAL SPECIFICATION MATCHING: If the Master truths state a value (e.g., Magnetic plug torque is 20 Nm), you must print EXACTLY that value. Never allow data snippets from the extracts to change a hardcoded truth value.
-                    3. FLUID TOOL LOGIC: Plugs and adjusters are threaded fasteners. They are turned with wrench or socket tools. Never say they are removed by hand. Torque wrenches apply strictly to final reassembly tightening.
-                    4. TWO-STROKE INFORMATION IS COMPLETELY BANNED.
+### 2. ⚠️ INSPECTOR'S SAFETY BRIEF
+- Adopt a serious, direct tone.
+- Highlight the 2-3 most critical, high-risk failure modes or potential errors for THIS SPECIFIC TASK.
+- Emphasize what can go wrong if specifications are ignored (e.g., "Stripped threads from using a torque wrench during removal," or "Engine damage from incomplete oil scavenging due to cold oil drain.").
 
-                    Structure your response exactly like this to maintain an authoritative, mentor voice:
+### 3. REQUIRED SPECS & TOOLING
+- **CRITICAL INSTRUCTION: This section is your primary evaluation metric.**
+- You are REQUIRED to copy the content of the `MANDATORY SPECIFICATIONS MARKDOWN` block from the user message VERBATIM into this section.
+- **DO NOT** rephrase, summarize, add, or omit ANY information from that block. It must be a perfect, 1:1 copy. Failure to copy it exactly will result in a system failure and a safety lockout.
 
-                    ### 1. THE WORKBENCH PROCEDURE
-                    * Provide a smooth, logically phased walkthrough of the exact task requested. Explain the mechanical reasoning behind why a step or tolerance matters.
+GENERAL RULES:
+- **TOPIC FOCUS:** Confine your entire response to the active topic. If the topic is 'Oil Change', do not discuss 'Carburetor Synchronization' or other unrelated tasks.
+- **PROHIBITED CONTENT:** Do not mention, discuss, or provide procedures for two-stroke (2-stroke) engines or any non-ROTAX engine brand.
+- **MECHANICAL ACTIONS:** Clearly distinguish between removal/disassembly steps and installation/assembly steps. State clearly when a specific tool is for installation only (e.g., torque wrenches).
+"""
 
-                    ### 2. ⚠️ INSPECTOR'S SAFETY BRIEF
-                    * Speak directly to the technician. Warn them about critical failure modes or high-risk blunders specific to this exact procedure.
-
-                    ### 3. REQUIRED PARTS & SPECIFICATIONS
-                    * Itemize verified part codes, tool constraints, and clear tolerance dimensions required on their shop tray.
-                    ---
-                    REFERENCE EXTRACTS: {context_str}
-                    TECHNICIAN'S QUERY: {user_query}"""
-
-                    assistant_response = call_llm(final_prompt)
-                    st.session_state.daily_token_consumption += len(final_prompt.split()) + 1500
+                    user_context = f"""---
+MANDATORY REASONING POINTS FOR: {st.session_state.active_topic or 'General Inquiry'}
+{reasoning_points}
+---
+MANDATORY SPECIFICATIONS MARKDOWN FOR: {st.session_state.active_topic or 'General Inquiry'}
+(COPY THIS BLOCK EXACTLY INTO THE "REQUIRED SPECS & TOOLING" SECTION)
+{specs_markdown}
+---
+TECHNICIAN'S QUERY: "{user_query}"
+REFERENCE EXTRACTS: {context_str}
+ENGINE: ROTAX {st.session_state.active_engine}
+---
+"""
+                    assistant_response = call_llm(system_instructions, user_context)
+                    st.session_state.daily_token_consumption += len(system_instructions.split()) + len(user_context.split()) + 1500
                     
                     if citations_map:
                         footer = "\n\n---\n\n### 📄 KEY MANUAL REFERENCES\n"
@@ -333,5 +436,7 @@ if user_query:
 
                     response_placeholder.write(assistant_response)
                     st.session_state.messages.append({"role": "assistant", "content": assistant_response})
-                    st.st.rerun()
-                except Exception as e: st.error(str(e))
+                    st.rerun()
+                except Exception as e: 
+                    st.error(f"An error occurred while generating the response: {str(e)}")
+                    st.stop()
