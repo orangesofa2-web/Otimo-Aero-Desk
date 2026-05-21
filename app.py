@@ -425,4 +425,66 @@ if user_query:
                                 chunk_data = st.session_state.vector_metadata[idx]
                                 matched_chunks.append(chunk_data['text'])
                                 citations_map.setdefault(chunk_data['source'], set()).add(chunk_data['page'])
-                        if matched_chunks: context_str = "\n\n--
+                        if matched_chunks: context_str = "\n\n---\n\n".join(matched_chunks)
+                    
+                    topic_data = SPEC_REGISTRY.get(st.session_state.active_topic)
+                    if topic_data:
+                        reasoning_points = "\n".join([f"- {point}" for point in topic_data["reasoning_points"]])
+                        specs_markdown = topic_data["specs_and_tooling_markdown"]
+                    else:
+                        reasoning_points = "Focus on safety and technical accuracy."
+                        specs_markdown = "Refer to official technical aviation manuals limits."
+
+                    system_instructions = f"""You are 'Otimo Inspector', an expert AI mentor for aerospace technicians working on ROTAX engines. You are precise, highly technical, and safety-focused. Your job is to address the technician's actual maintenance issues clearly using the verified technical data provided.
+
+You MUST structure your response using this exact three-part format:
+
+### 1. THE WORKBENCH PROCEDURE
+- Provide a clear, step-by-step mechanical walkthrough to address the technician's query.
+- Use the 'MANDATORY REASONING POINTS' provided below to explain the engineering reason behind critical steps.
+- You may incorporate matching contextual details from the 'REFERENCE EXTRACTS', but the Mandatory Points and Specifications must always take absolute priority.
+- If the technician switches context to ask an adjacent question (e.g., asking about electrical lanes or gauge warnings mid-procedure), do not ignore it or force them back to a previous topic. Answer the active query step-by-step using the active data context provided.
+- **CRITICAL INLINE SAFETY GATES:** If a step involves danger or high risk (such as working around live electrical buses, spinning propeller arcs, or systems under fluid pressure), you MUST call out that danger explicitly *at that exact step*. Immediately add a mandatory prompt instructing the user: "If you lack the confidence or specialized tools to proceed with this activity—as errors here may cause critical mechanical failure, severe personal harm, or death—STOP WORK immediately and contact a certified iRMT inspector."
+
+### 2. ⚠️ INSPECTOR'S SAFETY BRIEF
+- Highlight the 2-3 most critical, high-risk failure modes or mechanical blunders specific to this active task.
+- Emphasize what can go wrong if specifications are ignored.
+- **MANDATORY ESCALATION CLOSURE:** Conclude this section by advising the user that if they lack the confidence or specialized tools for any step, they must step back and contact a qualified iRMT technician.
+
+### 3. REQUIRED SPECS & TOOLING
+- Copy the text from the 'MANDATORY SPECIFICATIONS MARKDOWN' block provided in the user context exactly, 1:1, as a clean markdown list. Do not alter the numbers, units, or constraints.
+
+GENERAL COMPLIANCE RULES:
+- **FORMATTING:** Always ensure there is a clear blank line and three hashtags (###) before every major section header so the layout renders correctly on the workbench screen.
+- Focus entirely on the active maintenance topic. Do not pull in data from other unrelated tasks.
+- Do not mention, discuss, or provide instructions for two-stroke (2-stroke) engines or non-ROTAX systems.
+"""
+
+                    user_context = f"""---
+MANDATORY REASONING POINTS FOR: {st.session_state.active_topic or 'General Inquiry'}
+{reasoning_points}
+---
+MANDATORY SPECIFICATIONS MARKDOWN FOR: {st.session_state.active_topic or 'General Inquiry'}
+(COPY THIS BLOCK EXACTLY INTO THE "REQUIRED SPECS & TOOLING" SECTION)
+{specs_markdown}
+---
+TECHNICIAN'S QUERY: "{user_query}"
+REFERENCE EXTRACTS: {context_str}
+ENGINE: ROTAX {st.session_state.active_engine}
+---
+"""
+                    assistant_response = call_llm(system_instructions, user_context)
+                    st.session_state.daily_token_consumption += len(system_instructions.split()) + len(user_context.split()) + 1500
+                    
+                    if citations_map:
+                        footer = "\n\n---\n\n### 📄 KEY MANUAL REFERENCES\n"
+                        for doc, pages in citations_map.items():
+                            footer += f"* **{doc}** — Page(s): {', '.join(map(str, sorted(list(pages))))}\n"
+                        assistant_response += footer
+
+                    response_placeholder.write(assistant_response)
+                    st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+                    st.rerun()
+                except Exception as e: 
+                    st.error(f"An error occurred while generating the response: {str(e)}")
+                    st.stop()
