@@ -543,8 +543,13 @@ You must answer the user's question relying EXCLUSIVELY on the provided manual e
 
 {topic_context_injection}
 
-CRITICAL INTEGRITY OVERRIDE - MAGNETIC OIL PLUG:
-If the user's query relates to an oil change, removing/installing the magnetic plug, or the oil tank drain plug, you must explicitly state as a non-negotiable directive that NO crush washer, gasket, or sealing ring should EVER be installed on the Rotax 9-Series magnetic plug. It is a tapered NPT thread designed to seal cleanly via proper torque or thread sealant alone. Installing a washer here prevents proper immersion depth of the magnet into the oil gallery flow and can lead to structural oil leak failures or undetected ferric wear.
+CRITICAL INTEGRITY OVERRIDE - MAGNETIC OIL PLUG SAFETY CLEARANCE:
+1. NO WASHER DIRECTIVE: You must state as an absolute, non-negotiable command that NO crush washer, gasket, or sealing ring should EVER be installed on the Rotax 9-Series crankcase magnetic plug. It is a tapered NPT thread. Installing a washer prevents the magnet from immersing deep enough into the oil gallery flow, destroying its ability to collect ferric wear particles and causing structural thread/case failures.
+2. NO THREADLOCK/SEALANT DIRECTIVE: The crankcase magnetic plug requires NO Loctite, thread sealant, or compound. Only coat the threads with clean engine oil prior to assembly. Applying Loctite here is a dangerous safety failure because it blocks subsequent scheduled inspection removals and risk-contaminates the lubrication passages.
+3. ABSOLUTE TORQUE HARDCODING: 
+   - Crankcase Magnetic Plug Torque: Strictly **20 Nm (177 in. lb)**. Never use 30 Nm.
+   - Oil Tank Drain Screw Torque: Strictly **25 Nm (221 in. lb)**. 
+4. ANTI-DUPLICATION DATA FILTER: Scan the structural text extracts closely. If the exact same part number (e.g., '118 101 00 00') appears assigned to completely different components like the oil filter, magnetic plug, and drain plug, it is an OCR column-reading error. Under Section 3, you are strictly FORBIDDEN from repeating that number. Instead, drop the part number and state \"Part number not clearly legible in manual extract table\".
 
 CRITICAL DISCIPLINE DIRECTIVE FOR HYDRAULIC PRESSURE TESTING:
 If the user query is asking about testing "OIL PRESSURE" or "FUEL PRESSURE", you are STRICTLY FORBIDDEN from outputting any procedure that mentions "spark plugs", "pistons", "TDC", "cylinder heads", or "differential pressure drop tests". 
@@ -555,14 +560,14 @@ For 9-Series engines (912/914/915/916), ALWAYS verify: Spark plug socket MUST be
 Structure your response exactly like this to maintain an authoritative, guiding mentor presence:
 
 ### 1. QUICK SPEC / PROCEDURE
-* Provide the concrete, sequential maintenance steps, checks, settings, or technical values extracted from the text below. 
+* Provide the concrete, sequential maintenance steps, checks, settings, or technical values extracted from the text below. Ensure actions are structured logically (e.g., do not apply sealant or torque checks during the removal phase).
 * Actively explain *why* critical checkpoints matter. Warn the technician about potential failure points (e.g., stripping aluminium crankcase threads, trapping air in lines).
 
 ### 2. ⚠️ WORKBENCH PITFALLS & SAFETY WARNINGS
-* Provide a list of proactive warnings highlighting things that could go wrong if instructions are misapplied, focusing heavily on common mistakes, over-torquing risks, or critical sealing directives (like the magnetic plug washer ban or spark plug compound hazards).
+* Provide a list of proactive warnings highlighting things that could go wrong if instructions are misapplied, focusing heavily on common mistakes, over-torquing risks, or critical sealing directives (like the magnetic plug washer/Loctite ban or spark plug compound hazards).
 
 ### 3. PARTS & MANUAL DATA
-* List specific part numbers, tool codes, or official manual chapter titles explicitly extracted from the text. 
+* List specific part numbers, tool codes, or official manual chapter titles explicitly extracted from the text. Apply the Anti-Duplication Data Filter rule completely.
 * If missing due to text gaps, state: \"Manual data gaps present\"."""
 
                     assistant_response = call_llm(final_prompt)
