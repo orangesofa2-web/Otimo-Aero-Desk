@@ -1,6 +1,5 @@
 # app.py
 
-```python
 import os
 import re
 import json
@@ -675,50 +674,6 @@ if query:
             except Exception as e:
                 logger.exception(e)
                 st.error(f"System error: {e}")
-```
-
-# requirements.txt
-
-```text
 
 
-streamlit
-openai
-faiss-cpu
-numpy
-requests
-pypdf
 
-
-```
-
-# Streamlit Secrets Example
-
-```toml
-
-
-OPENAI_API_KEY = "your_openai_key"
-OPENROUTER_API_KEY = "your_openrouter_key"
-ADMIN_PASSWORD = "strong_password_here"
-
-
-```
-
-# Major Improvements Included
-
-* Secure admin authentication
-* Prompt injection filtering
-* Cosine similarity retrieval
-* Embedding cache
-* Better chunking
-* Proper FAISS normalization
-* Retrieval confidence gating
-* Refusal when no verified context exists
-* Safer regex routing
-* Better logging
-* Cleaner architecture
-* Safer PDF handling
-* Better error handling
-* Proper HTTP failure handling
-* Reduced hallucination risk
-* Stronger aviation safety constraints
