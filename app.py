@@ -169,6 +169,28 @@ SPEC_REGISTRY = {
     - **DO NOT** attempt to adjust carburetors at this RPM. A non-zero reading indicates a failure in the mechanical linkage, cables, or carburetor components.
     - You MUST return to idle, shut down the engine, and diagnose/correct the underlying mechanical fault before repeating the entire synchronization procedure.
 """
+    },
+    "DUAL LANE ELECTRICAL DIAGNOSTICS": {
+        "reasoning_points": [
+            "The Rotax fuel-injected 'iS' engines utilize an internal permanent magnet generator supplying independent electrical networks: Lane A and Lane B via Generator A (Internal power) and Generator B (External/Battery charge power).",
+            "A voltage drop below 12.0 Volts on either Lane indicates a potential regulator failure, stator winding degradation, bad grounding, or a faulty backup battery cross-feed circuit.",
+            "Lane checks must be executed strictly following the cockpit Lane Selector protocol to isolate the EMS (Engine Management System) power source safely without stalling the fuel pumps."
+        ],
+        "specs_and_tooling_markdown": """
+- **Engine System Type:** Fuel Injected EMS System (912iS / 915iS / 916iS architectures).
+- **Required Diagnostic Tooling:** Calibrated digital multimeter (DMM) and specialized wiring diagram schematic.
+
+---
+##### **Engine Electrical Operation Limits:**
+- **Normal Operating Bus Voltage:** **13.5V to 14.2V** on both networks when engine RPM is above 2500.
+- **Minimum Low-Voltage Limit:** **12.0V**. Below this threshold, the ECU may drop sensors or fail to trigger fuel injectors correctly.
+- **Generator B Output Rating:** Nominal 12V DC, max 30A continuous capacity.
+
+---
+##### **CRITICAL CHECKPOINTS:**
+- **LANE CHECK PROTOCOL:** Turn Lane switch OFF only at recommended test RPM (typically 2000 RPM). Ensure opposite Lane remains stable and engine does not stumble.
+- **GROUND BUS:** Inspect the main engine grounding strap. High impedance here causes immediate asymmetric lane voltage drops.
+"""
     }
 }
 
@@ -314,7 +336,7 @@ else:
     with center_console: render_main_workspace()
 
 # =====================================================
-# 10. USER COMMAND RUNNER WITH TOPIC FLUSH HOOKS
+# 10. USER COMMAND RUNNER WITH MULTI-TOPIC ROUTER
 # =====================================================
 user_query = st.chat_input("Enter technical maintenance question...")
 
@@ -334,8 +356,10 @@ if user_query:
             st.rerun()
         else: st.stop()
 
-    # DYNAMIC TOPIC STATE FLUSHING LAYER
-    if any(w in user_query.lower() for w in ["carb", "sync", "balance", "float", "choke"]):
+    # DYNAMIC DUAL-INTELLIGENCE TOPIC STATE ROUTER
+    if any(w in user_query.lower() for w in ["lane", "volt", "efis", "bus", "generator", "stator"]):
+        st.session_state.active_topic = "DUAL LANE ELECTRICAL DIAGNOSTICS"
+    elif any(w in user_query.lower() for w in ["carb", "sync", "balance", "float", "choke"]):
         st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
     elif any(w in user_query.lower() for w in ["plug", "gap", "spark"]):
         st.session_state.active_topic = "SPARK PLUG INSPECTION"
@@ -355,7 +379,7 @@ if user_query:
     with assistant_canvas:
         response_placeholder = st.empty()
         if invalid_configuration(user_query, st.session_state.active_engine):
-            st.error("Incompatible carburetration configuration engine block.")
+            st.error("Incompatible component configuration for this engine profile.")
             st.stop()
         else:
             with st.spinner("Executing mathematical spatial context scan..."):
@@ -383,7 +407,7 @@ if user_query:
                         reasoning_points = "Focus on safety and technical accuracy."
                         specs_markdown = "Refer to official technical aviation manuals limits."
 
-                    system_instructions = f"""You are 'Otimo Inspector', an expert AI mentor for aerospace technicians working on ROTAX engines. You are precise, highly technical, and safety-focused. Your job is to guide the technician through the requested procedure safely using the verified specifications provided.
+                    system_instructions = f"""You are 'Otimo Inspector', an expert AI mentor for aerospace technicians working on ROTAX engines. You are precise, highly technical, and safety-focused. Your job is to address the technician's actual maintenance issues clearly using the verified technical data provided.
 
 You MUST structure your response using this exact three-part format:
 
@@ -391,20 +415,21 @@ You MUST structure your response using this exact three-part format:
 - Provide a clear, step-by-step mechanical walkthrough to address the technician's query.
 - Use the 'MANDATORY REASONING POINTS' provided below to explain the engineering reason behind critical steps.
 - You may incorporate matching contextual details from the 'REFERENCE EXTRACTS', but the Mandatory Points and Specifications must always take absolute priority.
-- **CRITICAL INLINE SAFETY GATES:** If a step involves danger or high risk (such as working around a spinning propeller arc during running synchronizations, handling hot oil, or engine components under air pressure), you MUST call out that danger explicitly *at that exact step*. Immediately add a mandatory prompt instructing the user: "If you do not feel fully confident to proceed with this activity—as errors here may cause critical mechanical failure, severe personal harm, or death—STOP WORK immediately and contact a certified iRMT inspector."
+- If the technician switches context to ask an adjacent question (e.g., asking about electrical lanes or gauge warnings mid-procedure), do not ignore it or force them back to a previous topic. Answer the active query step-by-step using the active data context provided.
+- **CRITICAL INLINE SAFETY GATES:** If a step involves danger or high risk (such as working around live electrical buses, spinning propeller arcs, or systems under fluid pressure), you MUST call out that danger explicitly *at that exact step*. Immediately add a mandatory prompt instructing the user: "If you lack the confidence or specialized tools to proceed with this activity—as errors here may cause critical mechanical failure, severe personal harm, or death—STOP WORK immediately and contact a certified iRMT inspector."
 
 ### 2. ⚠️ INSPECTOR'S SAFETY BRIEF
-- Highlight the 2-3 most critical, high-risk failure modes or mechanical blunders specific to this task.
-- Emphasize what can go wrong if tolerances are ignored (e.g., severe engine vibration, linkage damage, or unairworthy configurations).
-- **MANDATORY ESCALATION CLOSURE:** Conclude this section by advising the user that if they are unconfident or lack specialized tools for any step, they must step back and contact a qualified iRMT technician.
+- Highlight the 2-3 most critical, high-risk failure modes or mechanical blunders specific to this active task.
+- Emphasize what can go wrong if specifications are ignored.
+- **MANDATORY ESCALATION CLOSURE:** Conclude this section by advising the user that if they lack the confidence or specialized tools for any step, they must step back and contact a qualified iRMT technician.
 
 ### 3. REQUIRED SPECS & TOOLING
 - Copy the text from the 'MANDATORY SPECIFICATIONS MARKDOWN' block provided in the user context exactly, 1:1, as a clean markdown list. Do not alter the numbers, units, or constraints.
 
 GENERAL COMPLIANCE RULES:
+- **FORMATTING:** Always ensure there is a clear blank line and three hashtags (###) before every major section header so the layout renders correctly on the workbench screen.
 - Focus entirely on the active maintenance topic. Do not pull in data from other unrelated tasks.
 - Do not mention, discuss, or provide instructions for two-stroke (2-stroke) engines or non-ROTAX systems.
-- Clearly distinguish between cold setup steps (mechanical) and engine-running steps (pneumatic).
 """
 
                     user_context = f"""---
