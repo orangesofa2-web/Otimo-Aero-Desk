@@ -1,3 +1,6 @@
 streamlit
-pypdf
+openai
+faiss-cpu
+numpy
 requests
+pypdf
