@@ -680,20 +680,28 @@ if query:
 # requirements.txt
 
 ```text
+
+
 streamlit
 openai
 faiss-cpu
 numpy
 requests
 pypdf
+
+
 ```
 
 # Streamlit Secrets Example
 
 ```toml
+
+
 OPENAI_API_KEY = "your_openai_key"
 OPENROUTER_API_KEY = "your_openrouter_key"
 ADMIN_PASSWORD = "strong_password_here"
+
+
 ```
 
 # Major Improvements Included
