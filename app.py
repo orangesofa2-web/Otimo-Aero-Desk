@@ -486,7 +486,7 @@ To provide the correct technical clearances or procedure parameters, please spec
             with st.spinner("Executing mathematical spatial context scan..."):
                 try:
                     context_str = "No directly matching documentation found in database."
-                    source_citations = []
+                    citations_map = {}
                     
                     # INJECT MEMORY INTO DATABASE LOOKUP
                     search_query = user_query
@@ -514,9 +514,13 @@ To provide the correct technical clearances or procedure parameters, please spec
                                 if score < 1.3:
                                     chunk_data = st.session_state.vector_metadata[idx]
                                     matched_chunks.append(f"Source: {chunk_data['source']} - Page {chunk_data['page']}\nContent: {chunk_data['text']}")
-                                    citation_entry = f"* Manual Document: `{chunk_data['source']}` — **Page {chunk_data['page']}**"
-                                    if citation_entry not in source_citations:
-                                        source_citations.append(citation_entry)
+                                    
+                                    # Consolidate unique document titles and collect all pages behind them
+                                    doc_title = chunk_data['source']
+                                    page_num = chunk_data['page']
+                                    if doc_title not in citations_map:
+                                        citations_map[doc_title] = set()
+                                    citations_map[doc_title].add(page_num)
                         
                         if matched_chunks:
                             context_str = "\n\n---\n\n".join(matched_chunks)
@@ -559,26 +563,27 @@ Structure your response exactly like this to maintain an authoritative, guiding 
 
 ### 3. PARTS & MANUAL DATA
 * List specific part numbers, tool codes, or official manual chapter titles explicitly extracted from the text. 
-* If missing due to text gaps, state: \"Manual data gaps present\".
-
----
-MANUAL EXTRACTS:
-{context_str}
----
-USER QUESTION: {user_query}"""
+* If missing due to text gaps, state: \"Manual data gaps present\"."""
 
                     assistant_response = call_llm(final_prompt)
                     
-                    if source_citations:
-                        footer_block = "\n\n---\n\n### 📄 SOURCES & DOCUMENTATION REFERENCES\n"
-                        footer_block += "*To verify the safety limits or physical instructions provided above, crosscheck the following mapped manual chapters:*\n"
-                        footer_block += "\n".join(source_citations)
+                    # Dynamically construct the compressed, key-document references footer segment
+                    if citations_map:
+                        footer_block = "\n\n---\n\n### 📄 KEY MANUAL REFERENCES\n"
+                        for doc, pages in citations_map.items():
+                            sorted_pages = sorted(list(pages))
+                            pages_str = ", ".join(map(str, sorted_pages))
+                            footer_block += f"* **{doc}** — Page(s): {pages_str}\n"
                         assistant_response += footer_block
                         
                     response_placeholder.write(assistant_response)
                     
+                    # Store the complete answer in session state
+                    st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+                    
+                    # Force immediate rerun to resolve the browser auto-scroll lock
+                    st.rerun()
+                    
                 except Exception as e:
                     assistant_response = f"An error occurred during matrix processing: {str(e)}"
                     response_placeholder.error(assistant_response)
-                    
-            st.session_state.messages.append({"role": "assistant", "content": assistant_response})
