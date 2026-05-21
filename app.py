@@ -64,6 +64,73 @@ SPEC_REGISTRY = {
 | **Oil Filter** | Filter Wrench | Hand-tight + 3/4 turn |
 """
     },
+    "CARBURETOR SYNCHRONIZATION": {
+        "reasoning_points": [
+            "Mechanical synchronization (adjusting cable slack) on a COLD engine is a mandatory prerequisite. Pneumatic balancing cannot fix an incorrect mechanical setup.",
+            "The idle RPM synchronization is the ONLY phase where a direct adjustment is made based on pneumatic readings. This has a specific tolerance (20 mbar).",
+            "The cruise power (3500-4000 RPM) check is a VERIFICATION-ONLY step with a non-negotiable, zero-tolerance (0 mbar) requirement. It is NOT an adjustment point.",
+            "Any pressure deviation at cruise power signifies a serious mechanical fault (e.g., cable stretch, bent linkage) that causes destructive harmonic vibrations."
+        ],
+        "specs_and_tooling_markdown": """
+| Item | Tooling / Requirement | Specification / Limit |
+| :--- | :--- | :--- |
+| **Test Equipment** | Differential Pressure Gauge | Carbmate / Synchro-Mate |
+| **Mechanical Setup** | Bowden Cable Free Play | Minimum 1 mm (0.04 in) |
+| **Idle Balancing** | Adjustment Phase (1800-2000 RPM) | Max 20 mbar (0.29 psi) diff |
+| **Cruise Verification** | VERIFICATION ONLY (3500-4000 RPM) | Exactly 0 mbar (0.00 psi) diff |
+"""
+    },
+    "VAPOR LOCK AND HEAT SOAK DIAGNOSTICS": {
+        "reasoning_points": [
+            "Low taxi speeds drastically reduce cowled engine airflow. Exhaust heat radiates upward directly into the Bing carburetor bowls and fuel feed lines, causing localized fuel boiling (heat soak).",
+            "Turning on the electric auxiliary fuel pump increases system pressure, raising the boiling point of the fuel and clearing vapor pockets by pushing them back through the return line."
+        ],
+        "specs_and_tooling_markdown": """
+| Item | Tooling / Requirement | Specification / Limit |
+| :--- | :--- | :--- |
+| **Normal Idle** | Minimum RPM Threshold | Strictly 1400 RPM (Protects gearbox) |
+| **Fuel Pressure Limits** | Minimum | 0.15 bar (2.2 psi) |
+| **Fuel Pressure Limits** | Maximum | 0.40 bar (5.8 psi) |
+"""
+    },
+    "DUAL LANE ELECTRICAL DIAGNOSTICS": {
+        "reasoning_points": [
+            "The Rotax fuel-injected 'iS' engines utilize an internal permanent magnet generator supplying independent electrical networks: Lane A and Lane B via Generator A (Internal power) and Generator B (External).",
+            "Lane checks must be executed strictly following the cockpit Lane Selector protocol to isolate the EMS (Engine Management System) power source safely without stalling the fuel pumps."
+        ],
+        "specs_and_tooling_markdown": """
+| Item | Tooling / Requirement | Specification / Limit |
+| :--- | :--- | :--- |
+| **Operating Bus Voltage** | Normal RPM | 13.5V to 14.2V |
+| **Minimum Limit** | Low-Voltage Threshold | 12.0V |
+| **Generator B Output** | Continuous Rating | Nominal 12V DC, max 30A |
+"""
+    },
+    "SPARK PLUG INSPECTION": {
+        "reasoning_points": [
+            "Torque settings for spark plugs are specified for a COLD engine casing to ensure thermal expansion doesn't lead to over-tightening.",
+            "Heat-conduction paste improves heat transfer, but it is electrically conductive. It must be kept away from the electrodes."
+        ],
+        "specs_and_tooling_markdown": """
+| Item | Tooling / Requirement | Specification / Limit |
+| :--- | :--- | :--- |
+| **Torque** | 16mm (5/8") Thin-Wall Socket | 16 Nm (142 in. lb) |
+| **Electrode Gap** | New Plug Setup | 0.8 mm to 0.9 mm |
+| **Wear Limit** | Used Plug Maximum | 1.1 mm (Replace if exceeded) |
+"""
+    },
+    "OIL PRESSURE CHECK": {
+        "reasoning_points": [
+            "Using a calibrated mechanical master gauge provides the true oil pressure, bypassing any potential errors from the aircraft's electronic sensors or wiring."
+        ],
+        "specs_and_tooling_markdown": """
+| Item | Tooling / Requirement | Specification / Limit |
+| :--- | :--- | :--- |
+| **Minimum Limit** | Hot Idle | 0.8 bar (11.6 psi) |
+| **Normal Operation** | Standard Power | 2.0 to 5.0 bar (29 to 73 psi) |
+| **Maximum Limit** | Cold Start | 7.0 bar (102 psi) |
+"""
+    },
     "DIFFERENTIAL PRESSURE / LEAK DOWN TEST": {
         "reasoning_points": [
             "Testing must be performed on a WARM engine to ensure piston rings and cylinder walls are at their operating expansion state.",
@@ -101,7 +168,7 @@ def requires_variant(query: str) -> bool:
 
 def invalid_configuration(query: str, engine_profile: str = None) -> bool:
     q = query.lower().replace(" ", "").replace("-", "")
-    return any(t in q for t in ["carb", "sync"]) and ("is" in (engine_profile or "").lower() or "915" in q or "916" in q)
+    return any(t in q for t in ["carb", "sync", "balance"]) and ("is" in (engine_profile or "").lower() or "915" in q or "916" in q)
 
 def get_embedding(text: str):
     return openai_client.embeddings.create(input=[text.replace("\n", " ")], model="text-embedding-3-small").data[0].embedding
@@ -188,25 +255,24 @@ if st.query_params.get("admin") == "true":
             st.rerun()
 
 # =====================================================
-# 6. MAIN WORKSPACE UI RENDER (FIXED)
+# 6. MAIN WORKSPACE UI RENDER (RESTORED CLEAN HEADER)
 # =====================================================
 _, center_console, _ = st.columns([0.15, 0.70, 0.15])
 
 with center_console:
-    # TITLE & HEADER ARE NOW ALWAYS VISIBLE
     st.title("Otimo Aero AI Technician")
     
+    # RESTORED UI FIX: Standard markdown formatting instead of a green blockquote.
     engine_label = st.session_state.active_engine or "NOT INITIALISED"
     task_label = st.session_state.active_topic or "Awaiting Input"
-    st.markdown(f"> **Engine:** `{engine_label}` &nbsp;&nbsp;|&nbsp;&nbsp; **Task:** `{task_label}`")
-    st.write("")
+    st.markdown(f"#### 🛠️ Workspace Status\n**Engine:** `{engine_label}` &nbsp;&nbsp;|&nbsp;&nbsp; **Task:** `{task_label}`")
+    st.divider() # Clean visual separation
     
-    # CHAT HISTORY IS NOW ALWAYS VISIBLE
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]): st.write(msg["content"])
 
 # =====================================================
-# 7. INPUT ROUTING & EXECUTION
+# 7. INPUT ROUTING & EXECUTION (RESTORED FULL ROUTER)
 # =====================================================
 if st.session_state.active_engine is None:
     user_query = st.chat_input("Enter Engine Type...")
@@ -222,10 +288,17 @@ if st.session_state.active_engine is None:
 else:
     user_query = st.chat_input("Enter maintenance question...")
     if user_query:
+        # FULLY RESTORED TOPIC ROUTER
         topic = "GENERAL MAINTENANCE INQUIRY"
-        if any(w in user_query.lower() for w in ["100", "200", "service"]): topic = "SCHEDULED 100HR / 200HR INSPECTION"
-        elif any(w in user_query.lower() for w in ["drain", "oil"]): topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
-        elif any(w in user_query.lower() for w in ["leak", "compression", "differential", "pressure test"]): topic = "DIFFERENTIAL PRESSURE / LEAK DOWN TEST"
+        q_low = user_query.lower()
+        if any(w in q_low for w in ["100", "200", "service", "schedule", "interval"]): topic = "SCHEDULED 100HR / 200HR INSPECTION"
+        elif any(w in q_low for w in ["drop", "taxi", "heat", "boil", "soak", "lock", "800", "900"]): topic = "VAPOR LOCK AND HEAT SOAK DIAGNOSTICS"
+        elif any(w in q_low for w in ["lane", "volt", "efis", "bus", "generator", "stator"]): topic = "DUAL LANE ELECTRICAL DIAGNOSTICS"
+        elif any(w in q_low for w in ["carb", "sync", "balance", "float", "choke"]): topic = "CARBURETOR SYNCHRONIZATION"
+        elif any(w in q_low for w in ["plug", "gap", "spark"]): topic = "SPARK PLUG INSPECTION"
+        elif any(w in q_low for w in ["pressure", "gauge"]) and "oil" in q_low: topic = "OIL PRESSURE CHECK"
+        elif any(w in q_low for w in ["drain", "magnet", "change", "oil"]): topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
+        elif any(w in q_low for w in ["leak", "compression", "differential", "pressure test"]): topic = "DIFFERENTIAL PRESSURE / LEAK DOWN TEST"
         
         st.session_state.active_topic = topic
         st.session_state.messages.append({"role": "user", "content": user_query})
@@ -247,9 +320,11 @@ else:
                         chunks = [st.session_state.vector_metadata[i]['text'] for i in ind[0] if i != -1 and i < len(st.session_state.vector_metadata)]
                         if chunks: context_str = "\n\n---\n\n".join(chunks)
 
+                    # RESTORED AGGRESSIVE SAFETY GATES
                     system_instructions = """You are an expert Rotax AI Technician. 
 1. THE WORKBENCH PROCEDURE: Provide concise steps. Incorporate relevant data from the REFERENCE EXTRACTS.
-2. ⚠️ INSPECTOR'S SAFETY BRIEF: Identify 2 critical high-risk modes.
+- **CRITICAL INLINE SAFETY GATES:** If a step involves danger (spinning props, fluid pressure), call it out EXACTLY at that step. Add: "If you lack the confidence or specialized tools to proceed with this activity—as errors here may cause critical mechanical failure, severe personal harm, or death—STOP WORK immediately and contact a certified iRMT."
+2. ⚠️ INSPECTOR'S SAFETY BRIEF: Identify 2 critical high-risk modes. Conclude exactly with: "If you lack the confidence or specialized tools for any step, you must step back and contact a qualified iRMT technician."
 3. REQUIRED SPECS & TOOLING: Output ONLY the Markdown table provided in the context. Do not invent new rows.
 
 STRICT RULES:
