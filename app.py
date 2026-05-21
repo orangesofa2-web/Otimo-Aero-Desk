@@ -59,7 +59,7 @@ METADATA_PATH = "faiss_metadata.json"
 # =====================================================
 COOLDOWN_SECONDS = 5
 MAX_QUERY_CHARACTERS = 400
-DAILY_TOKEN_BUDGET = 1100000  # OPTIMIZED: Hard budget to keep monthly bills under £1.00 inc VAT
+DAILY_TOKEN_BUDGET = 1100000
 
 SPEC_REGISTRY = {
     "OIL CHANGE / MAGNETIC PLUG INSPECTION": {
@@ -73,7 +73,7 @@ SPEC_REGISTRY = {
         "specs_and_tooling_markdown": """
 - **Engine Pre-Condition:** Drain the oil only when **WARM or HOT**.
 - **Approved Oil Type:** 4-stroke engine oil meeting Rotax Standard RON 424 (e.g., AeroShell Sport Plus 4).
-- **Refill Quantity:** Approx. 3.0 Litres (final level MUST be verified via dipstick after a ground run).
+- **Refill Quantity:** Approx. 3.0 Litres baseline capacity (final level MUST be verified via dipstick after expansion purging protocol).
 
 ---
 ##### **Component-Specific Data:**
@@ -211,6 +211,38 @@ SPEC_REGISTRY = {
 - **LANE CHECK PROTOCOL:** Turn Lane switch OFF only at recommended test RPM (typically 2000 RPM). Ensure opposite Lane remains stable and engine does not stumble.
 - **GROUND BUS:** Inspect the main engine grounding strap. High impedance here causes immediate asymmetric lane voltage drops.
 """
+    },
+    "SCHEDULED 100HR / 200HR INSPECTION": {
+        "reasoning_points": [
+            "The 100-hour and 200-hour tracking blocks represent the foundational airworthiness checks for both carburetted and fuel-injected Rotax lines.",
+            "For fuel-injected engines (912iS, 915iS, 916iS), extracting the diagnostic ECU logs via BUDS software is mandatory to identify hidden sensor faults, knock alerts, or wastegate position errors.",
+            "Inspecting the exhaust wastegate linkage on turbocharged variants (914, 915iS, 916iS) prevents severe overboost conditions or total manifold pressure failures during flight."
+        ],
+        "specs_and_tooling_markdown": """
+- **Core Action Requirement:** Complete oil change, filter replacement, and magnetic plug extraction.
+- **ECU Diagnostics (iS Variant Mandatory Metric):** Connect BUDS hardware tool and perform full error log dump.
+- **Turbo System Checks (914 / 915iS / 916iS Mandatory Metric):** Check wastegate linkage free-movement clearance. Apply heat-resistant lubricant to the actuator joints.
+
+---
+##### **Fluid Capacities Matrix (Official Benchmarks):**
+- **Rotax 912 UL / ULS / 914:** Approx. 3.0 Litres baseline capacity (AeroShell Sport Plus 4).
+- **Rotax 912iS / 915iS / 916iS (Dry Sump Network):** Approx. 3.0 Litres baseline tank capacity (Total expansion network holds 3.2 to 3.4 Litres max capacity depending on airframe hoses).
+
+---
+##### **CRITICAL HARDWARE DIRECTIVES:**
+- **FUEL PUMP INSPECTION:** Measure active electrical current draw on primary and secondary electric fuel pumps.
+- **SPARK PLUGS:** Dual plugs per cylinder must have gaps checked and reset to **0.8mm - 0.9mm** limit benchmarks.
+"""
+    },
+    "GENERAL MAINTENANCE INQUIRY": {
+        "reasoning_points": [
+            "Aviation troubleshooting requires structural discipline. Conceptual mechanics can be discussed, but hard numbers must originate exclusively from official type-conforming documents.",
+            "Unmapped operations must prioritize general system functionality and safe workspace practice over auto-completing numbers or specs."
+        ],
+        "specs_and_tooling_markdown": """
+- **Core Directive:** Conceptual walkthrough only.
+- **SPECIFICATION ACQUISITION:** You are required to cross-reference and extract exact numeric specifications, torque limits, and part clearances directly from your official hardcopy Rotax Line Maintenance Manual or airframe handbook. Do not rely on unverified memory.
+"""
     }
 }
 
@@ -256,7 +288,7 @@ def requires_variant(query: str) -> bool:
 def invalid_configuration(query: str, engine_profile: str = None) -> bool:
     q = query.lower().replace(" ", "").replace("-", "")
     carb_terms = ["carb", "sync", "balance", "float", "choke"]
-    injected_engines = ["915", "916", "912is"]
+    injected_engines = ["915is", "916is", "912is"]
     return any(t in q for t in carb_terms) and (any(e in q for e in injected_engines) or any(e in (engine_profile or "").lower() for e in injected_engines))
 
 def get_embedding(text: str, model="text-embedding-3-small"):
@@ -350,13 +382,13 @@ def render_main_workspace():
     for message in st.session_state.messages:
         with st.chat_message(message["role"]): st.write(message["content"])
 
-if is_admin_mode: render_main_workspace()
+if is_admin_mode : render_main_workspace()
 else:
     _, center_console, _ = st.columns([0.15, 0.70, 0.15])
     with center_console: render_main_workspace()
 
 # =====================================================
-# 10. USER COMMAND RUNNER WITH MULTI-TOPIC ROUTER
+# 10. USER COMMAND RUNNER WITH FALLBACK HARDENING LAYER
 # =====================================================
 user_query = st.chat_input("Enter technical maintenance question...")
 
@@ -371,7 +403,10 @@ if user_query:
     if st.session_state.active_engine is None:
         engine_match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
         if engine_match:
-            st.session_state.active_engine = engine_match.group(1).upper().replace(" ", "")
+            raw_match = engine_match.group(1).upper().replace(" ", "")
+            if raw_match == "915": raw_match = "915IS"
+            if raw_match == "916": raw_match = "916IS"
+            st.session_state.active_engine = raw_match
             st.session_state.messages.append({"role": "user", "content": user_query})
             st.session_state.messages.append({"role": "assistant", "content": f"### 🔓 WORKSPACE UNLOCKED\nEngine profile securely set to **ROTAX {st.session_state.active_engine}**."})
             st.rerun()
@@ -383,8 +418,10 @@ if user_query:
             })
             st.rerun()
 
-    # HARDENED DUAL-INTELLIGENCE TOPIC STATE ROUTER WITH VAPOR LOCK DETECTION
-    if any(w in user_query.lower() for w in ["drop", "taxi", "heat", "boil", "soak", "lock", "800", "900"]):
+    # DUAL-INTELLIGENCE TOPIC ROUTER WITH FALLBACK TRIGGER HOOKS
+    if any(w in user_query.lower() for w in ["service", "hour", "100", "200", "schedule", "interval"]):
+        st.session_state.active_topic = "SCHEDULED 100HR / 200HR INSPECTION"
+    elif any(w in user_query.lower() for w in ["drop", "taxi", "heat", "boil", "soak", "lock", "800", "900"]):
         st.session_state.active_topic = "VAPOR LOCK AND HEAT SOAK DIAGNOSTICS"
     elif any(w in user_query.lower() for w in ["lane", "volt", "efis", "bus", "generator", "stator"]):
         st.session_state.active_topic = "DUAL LANE ELECTRICAL DIAGNOSTICS"
@@ -396,6 +433,9 @@ if user_query:
         st.session_state.active_topic = "OIL PRESSURE CHECK"
     elif any(w in user_query.lower() for w in ["drain", "magnet", "change", "oil"]):
         st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
+    else:
+        # FALLBACK DEFENSE GATING: Capture any unmapped queries securely
+        st.session_state.active_topic = "GENERAL MAINTENANCE INQUIRY"
 
     if time_passed < COOLDOWN_SECONDS or len(user_query) > MAX_QUERY_CHARACTERS or st.session_state.daily_token_consumption >= DAILY_TOKEN_BUDGET:
         st.error("Guardrail condition triggered.")
@@ -414,7 +454,7 @@ if user_query:
             with st.spinner("Executing mathematical spatial context scan..."):
                 try:
                     context_str, citations_map = "No matching data found.", {}
-                    search_query = f"{st.session_state.active_topic or ''} {user_query}"
+                    search_query = f"{st.session_state.active_engine} {st.session_state.active_topic or ''} {user_query}"
 
                     if st.session_state.vector_index is not None:
                         query_vector = np.array([get_embedding(search_query)]).astype('float32')
@@ -444,6 +484,7 @@ You MUST structure your response using this exact three-part format:
 - Use the 'MANDATORY REASONING POINTS' provided below to explain the engineering reason behind critical steps.
 - You may incorporate matching contextual details from the 'REFERENCE EXTRACTS', but the Mandatory Points and Specifications must always take absolute priority.
 - If the technician switches context to ask an adjacent question (e.g., asking about electrical lanes or gauge warnings mid-procedure), do not ignore it or force them back to a previous topic. Answer the active query step-by-step using the active data context provided.
+- **CRITICAL HALLUCINATION BAN:** You are completely forbidden from inventing fluid capacities, torque metrics, or tooling requirements out of thin air. If the required numbers are not explicitly listed in the 'MANDATORY SPECIFICATIONS MARKDOWN' or the 'REFERENCE EXTRACTS' for the active engine profile, state clearly that the values must be verified in the hardcopy Line Maintenance Manual. Do not guess or auto-complete numbers.
 - **CRITICAL INLINE SAFETY GATES:** If a step involves danger or high risk (such as working around live electrical buses, spinning propeller arcs, or systems under fluid pressure), you MUST call out that danger explicitly *at that exact step*. Immediately add a mandatory prompt instructing the user: "If you lack the confidence or specialized tools to proceed with this activity—as errors here may cause critical mechanical failure, severe personal harm, or death—STOP WORK immediately and contact a certified iRMT inspector."
 
 ### 2. ⚠️ INSPECTOR'S SAFETY BRIEF
