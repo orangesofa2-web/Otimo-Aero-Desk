@@ -347,6 +347,7 @@ if user_query:
     with col_ctx:
         with st.chat_message("user"): st.write(user_query)
 
+    # ACTIVE SYSTEM REJECTION & TECHNICAL ESCALATION INTERCEPT CODES
     if st.session_state.active_engine is None:
         engine_match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
         if engine_match:
@@ -354,7 +355,13 @@ if user_query:
             st.session_state.messages.append({"role": "user", "content": user_query})
             st.session_state.messages.append({"role": "assistant", "content": f"### 🔓 WORKSPACE UNLOCKED\nEngine profile securely set to **ROTAX {st.session_state.active_engine}**."})
             st.rerun()
-        else: st.stop()
+        else:
+            st.session_state.messages.append({"role": "user", "content": user_query})
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": "⚠️ **ENGINE PROFILE CONFIGURATION REQUIRED**\n\nI cannot diagnose telemetry or look up specifications until your exact engine model is locked in. Lane architecture and tolerances vary significantly between carburetor assemblies and fuel-injected EMS blocks.\n\n**Please specify your exact engine model to unlock the workbench:**\n* **912UL** | **912ULS** | **912iS** | **914** | **915iS** | **916iS**"
+            })
+            st.rerun()
 
     # DYNAMIC DUAL-INTELLIGENCE TOPIC STATE ROUTER
     if any(w in user_query.lower() for w in ["lane", "volt", "efis", "bus", "generator", "stator"]):
@@ -398,7 +405,6 @@ if user_query:
                                 citations_map.setdefault(chunk_data['source'], set()).add(chunk_data['page'])
                         if matched_chunks: context_str = "\n\n---\n\n".join(matched_chunks)
                     
-                    # Grab context-specific rules
                     topic_data = SPEC_REGISTRY.get(st.session_state.active_topic)
                     if topic_data:
                         reasoning_points = "\n".join([f"- {point}" for point in topic_data["reasoning_points"]])
