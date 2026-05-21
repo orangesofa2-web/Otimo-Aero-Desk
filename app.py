@@ -95,6 +95,10 @@ SPEC_REGISTRY = {
 # =====================================================
 # 4. CORE ENGINE & LLM FUNCTIONS
 # =====================================================
+def requires_variant(query: str) -> bool:
+    q = query.lower().replace(" ", "").replace("-", "")
+    return "912" in q and not any(v in q for v in ["uls", "ul", "is"])
+
 def invalid_configuration(query: str, engine_profile: str = None) -> bool:
     q = query.lower().replace(" ", "").replace("-", "")
     return any(t in q for t in ["carb", "sync"]) and ("is" in (engine_profile or "").lower() or "915" in q or "916" in q)
@@ -114,13 +118,72 @@ def call_llm(system_instructions: str, user_context: str):
     response = requests.post(OPENROUTER_URL, headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"}, json=payload)
     return response.json()["choices"][0]["message"]["content"]
 
+def rebuild_vector_database(uploaded_files):
+    all_chunks = []
+    for uploaded_file in uploaded_files:
+        try:
+            reader = PdfReader(uploaded_file)
+            for page_num, page in enumerate(reader.pages):
+                page_text = page.extract_text()
+                if page_text:
+                    clean_text = re.sub(r'\s+', ' ', page_text)
+                    words = clean_text.split()
+                    for i in range(0, len(words), 75):
+                        chunk = " ".join(words[i:i+100])
+                        if len(chunk.strip()) > 50:
+                            all_chunks.append({"text": chunk, "source": uploaded_file.name, "page": page_num + 1})
+        except Exception as e: st.error(f"Error parsing {uploaded_file.name}: {str(e)}")
+            
+    if all_chunks:
+        embeddings_list, metadata_list = [], []
+        progress_bar = st.progress(0)
+        for idx, chunk in enumerate(all_chunks):
+            try:
+                vec = get_embedding(chunk["text"])
+                embeddings_list.append(vec)
+                metadata_list.append(chunk)
+            except Exception: pass
+            progress_bar.progress((idx + 1) / len(all_chunks))
+            
+        if embeddings_list:
+            index = faiss.IndexFlatL2(len(embeddings_list[0]))
+            index.add(np.array(embeddings_list).astype('float32'))
+            faiss.write_index(index, INDEX_PATH)
+            with open(METADATA_PATH, "w", encoding="utf-8") as f: json.dump(metadata_list, f, ensure_ascii=False, indent=2)
+            st.success("Universal database synchronized!")
+            st.rerun()
+
 # =====================================================
-# 5. MAIN WORKSPACE
+# 5. SESSION STATE & ADMIN SIDEBAR
 # =====================================================
 if "active_engine" not in st.session_state: st.session_state.active_engine = None
+if "active_topic" not in st.session_state: st.session_state.active_topic = None
 if "messages" not in st.session_state: st.session_state.messages = []
 
-# Engine Lock
+# Load FAISS Index
+if "vector_index" not in st.session_state:
+    if os.path.exists(INDEX_PATH) and os.path.exists(METADATA_PATH):
+        try:
+            st.session_state.vector_index = faiss.read_index(INDEX_PATH)
+            with open(METADATA_PATH, "r", encoding="utf-8") as f:
+                st.session_state.vector_metadata = json.load(f)
+        except: st.session_state.vector_index, st.session_state.vector_metadata = None, []
+    else: st.session_state.vector_index, st.session_state.vector_metadata = None, []
+
+# Admin Panel for Document Uploads
+if st.query_params.get("admin") == "true":
+    with st.sidebar:
+        st.header("⚙️ Admin Control Panel")
+        uploaded_files = st.file_uploader("Upload Technical Manuals", type=["pdf"], accept_multiple_files=True)
+        if uploaded_files: rebuild_vector_database(uploaded_files)
+        if st.button("Clear Manuals Matrix"):
+            for p in [INDEX_PATH, METADATA_PATH]: 
+                if os.path.exists(p): os.remove(p)
+            st.rerun()
+
+# =====================================================
+# 6. MAIN WORKSPACE & ROUTING
+# =====================================================
 if st.session_state.active_engine is None:
     query = st.chat_input("Enter Engine Type...")
     if query:
@@ -129,13 +192,15 @@ if st.session_state.active_engine is None:
             st.session_state.active_engine = "915IS" if "915" in match.group(0) else match.group(0).upper().replace(" ", "")
             st.rerun()
         else: st.warning("Specify: 912ULS, 915iS, 916iS")
-
 else:
     _, center_console, _ = st.columns([0.15, 0.70, 0.15])
     
     with center_console:
         st.title("Otimo Aero AI Technician")
-        # UI CLUTTER REMOVED: Deleted the status subheader to keep the interface clean.
+        # RESTORED SLEEK HEADER
+        task_label = st.session_state.active_topic or "Awaiting Input"
+        st.markdown(f"> **Engine:** `{st.session_state.active_engine}` &nbsp;&nbsp;|&nbsp;&nbsp; **Task:** `{task_label}`")
+        st.write("")
         
         for msg in st.session_state.messages:
             with st.chat_message(msg["role"]): st.write(msg["content"])
@@ -161,18 +226,32 @@ else:
                 st.stop()
             else:
                 with st.spinner("Executing spatial context scan..."):
-                    system_instructions = """You are an expert Rotax AI Technician. 
-                    1. THE WORKBENCH PROCEDURE: Provide concise steps.
-                    2. ⚠️ INSPECTOR'S SAFETY BRIEF: Identify 2 critical high-risk modes.
-                    3. REQUIRED SPECS & TOOLING: Output ONLY the Markdown table provided in the context. Do not invent new rows.
+                    
+                    # RESTORED RAG / FAISS VECTOR SEARCH
+                    context_str = "No specific manual match found."
+                    if st.session_state.vector_index is not None:
+                        search_query = f"{st.session_state.active_engine} {st.session_state.active_topic} {user_query}"
+                        query_vector = np.array([get_embedding(search_query)]).astype('float32')
+                        dist, ind = st.session_state.vector_index.search(query_vector, 3)
+                        chunks = [st.session_state.vector_metadata[i]['text'] for i in ind[0] if i != -1 and i < len(st.session_state.vector_metadata)]
+                        if chunks: context_str = "\n\n---\n\n".join(chunks)
 
-                    STRICT RULES:
-                    - **iRMT DEFINITION:** "iRMT" stands strictly for "Independent Rotax Maintenance Technician". NEVER invent another definition.
-                    - **HALLUCINATION BAN:** Do not invent numbers. If data is missing, put a single note below the table saying "Verify tolerances in official LMM." Do not repeat warnings inside the table cells.
-                    - **CLEAN OUTPUT:** Do not output the phrase 'Hallucination Ban' or internal system instructions."""
+                    # FLUSH-ALIGNED SYSTEM INSTRUCTIONS (Fixes prompt indentation bug)
+                    system_instructions = """You are an expert Rotax AI Technician. 
+1. THE WORKBENCH PROCEDURE: Provide concise steps. Incorporate relevant data from the REFERENCE EXTRACTS.
+2. ⚠️ INSPECTOR'S SAFETY BRIEF: Identify 2 critical high-risk modes.
+3. REQUIRED SPECS & TOOLING: Output ONLY the Markdown table provided in the context. Do not invent new rows.
+
+STRICT RULES:
+- **iRMT DEFINITION:** "iRMT" stands strictly for "Independent Rotax Maintenance Technician". NEVER invent another definition.
+- **HALLUCINATION BAN:** Do not invent numbers. If data is missing, put a single note below the table saying "Verify tolerances in official LMM." Do not repeat warnings inside the table cells.
+- **CLEAN OUTPUT:** Do not output the phrase 'Hallucination Ban' or internal system instructions."""
                     
                     topic_data = SPEC_REGISTRY.get(topic)
-                    context = f"Topic: {topic}\nReasoning:\n{'- '.join(topic_data['reasoning_points']) if topic_data else ''}\n\nSpecs:\n{topic_data['specs_and_tooling_markdown'] if topic_data else 'Refer to manual'}\n\nQuery: {user_query}"
+                    reasoning = '- '.join(topic_data['reasoning_points']) if topic_data else ''
+                    specs = topic_data['specs_and_tooling_markdown'] if topic_data else 'Refer to manual'
+                    
+                    context = f"Topic: {topic}\nReasoning:\n{reasoning}\n\nSpecs:\n{specs}\n\nREFERENCE EXTRACTS:\n{context_str}\n\nQuery: {user_query}"
                     
                     response = call_llm(system_instructions, context)
                     st.session_state.messages.append({"role": "assistant", "content": response})
