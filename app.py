@@ -54,33 +54,35 @@ INDEX_PATH = "faiss_index.bin"
 METADATA_PATH = "faiss_metadata.json"
 
 # =====================================================
-# 3. SAFETY GUARDRAIL PARAMETERS & SPEC REGISTRY
+# 3. SAFETY PARAMETERS & DYNAMIC MASTER SPEC REGISTRY
 # =====================================================
 COOLDOWN_SECONDS = 5
 MAX_QUERY_CHARACTERS = 400
 DAILY_TOKEN_BUDGET = 450000
 
-# Hardcoded Master Specification Matrix for Precision Overrides
+# The Absolute Spec Matrix: Used to ground the LLM in real data numbers
 SPEC_REGISTRY = {
     "OIL CHANGE / MAGNETIC PLUG INSPECTION": """
-    MANDATORY MECHANICAL SPECIFICATIONS FOR OIL SERVICING:
-    - Oil Tank Drain Screw: Requires 17mm socket. Torque strictly to **25 Nm**. Always install a new 12x18mm copper sealing ring.
-    - Crankcase Magnetic Plug: Requires 24mm socket. Torque strictly to **20 Nm**. Absolute ban on crush washers, gaskets, or Loctite thread sealants. Lubricate threads only with clean engine oil.
-    - Oil Filter: Part number 825601. Pre-lubricate rubber gasket with clean engine oil. Tighten by hand 3/4 turn after seal contact, or torque to **14 Nm** using a tool cup.
-    - Approved Fluid: Use high-quality 4-stroke motorcycle/aviation engine oils meeting Rotax Standard RON 424 (e.g., AeroShell Sport Plus 4).
-    - Capacity: Refill requires approximately 3.0 Litres. Final run verification via dipstick is required.
+    MANDATORY MECHANICAL TRUTHS & FLUID SPECIFICATIONS:
+    - Removal Phase: Always use standard combination wrenches or standard sockets to loosen plugs. NEVER state or imply a torque wrench is used for loosening or removal.
+    - Draining State: Oil must be drained when warm/hot (immediately after engine operation) to ensure full scavenging and correct fluid viscosity drop.
+    - Approved Oil Type: Use high-quality 4-stroke motorcycle or aviation-specific engine oils tested and approved under Rotax Standard RON 424. Highly recommended: AeroShell Oil Sport Plus 4 (10W-40 or 15W-50 depending on climate). NEVER use automotive oils due to the integrated gearbox and slipper clutch.
+    - Oil Refill Quantity: Refill requires approximately 3.0 Litres (5.3 Imp pints / 6.3 US pints). Total lubrication system capacity is 3.5 Litres, but approximately 0.5 Litres remains trapped inside the oil cooler and lines. Final volume verification must be confirmed via the oil tank dipstick after purging.
+    - Oil Tank Drain Screw: Requires a 17mm socket. Reinstallation tightening torque is strictly **25 Nm (221 in. lb)**. Always fit a new 12 x 18 mm copper sealing ring.
+    - Crankcase Magnetic Plug: Requires a 24mm socket. Reinstallation tightening torque is strictly **20 Nm (177 in. lb)**. Absolute ban on crush washers, gaskets, or thread sealing compounds (Loctite 567/243). Threads must be lubricated solely with clean engine oil before screwing home.
+    - Oil Filter: Rotax Genuine Part No. 825601. Clean the seating flange, coat the rubber seal with clean engine oil, and tighten by hand 3/4 turn after gasket contact, or torque to **14 Nm (124 in. lb)** using a dedicated filter cup tool.
     """,
     "SPARK PLUG INSPECTION": """
-    MANDATORY MECHANICAL SPECIFICATIONS FOR SPARK PLUGS:
-    - Tooling Requirement: Requires a 16mm (5/8") thin-wall spark plug socket. Never use an 18mm socket.
-    - Installation Torque: Torque strictly to **16 Nm** on a completely cold engine casing.
-    - Electrode Gap Profile: New plug gap must read between **0.8mm to 0.9mm**. Maximum wear limit cap is **1.1mm**. Manual regapping or bending is prohibited.
-    - Compound Sealing: Apply a very sparse, thin layer of silicone heat-conduction paste strictly to the top engagement threads. Keep electrodes clean.
+    MANDATORY MECHANICAL TRUTHS & SPARK PLUG SPECIFICATIONS:
+    - Tool Dimension: Requires an 16mm (5/8") thin-wall spark plug socket. Never use an 18mm socket.
+    - Reinstallation Torque: Tighten strictly to **16 Nm (142 in. lb)** on a completely cold engine head.
+    - Electrode Clearance Profile: New plug gap must measure between **0.8 mm to 0.9 mm (0.031 to 0.035 in)**. Absolute maximum wear limit is **1.1 mm (0.043 in)**. Bending or tapping electrodes is strictly prohibited.
+    - Sealing Pastes: Apply a sparse, minimal film of silicone heat-conduction compound strictly to the upper engagement threads of the plug body. Keep electrodes completely dry.
     """,
     "OIL PRESSURE CHECK": """
     MANDATORY DIAGNOSTIC PARAMETERS:
-    - Master Testing Tooling: Isolate dashboard transmitters by threading a calibrated mechanical master pressure gauge directly into the main oil pump gallery port using an M10x1 thread adaptor.
-    - Hydraulic Pressure Limits: Minimum pressure at hot engine idle is **0.8 bar**. Normal operating limit window above 3500 RPM is **2.0 to 5.0 bar**. Short-term cold start maximum limit is **7.0 bar**.
+    - Testing Method: Connect a calibrated mechanical master pressure gauge directly into the main oil pump gallery block port using an M10x1 thread adaptor to crosscheck instrument accuracy.
+    - Hydraulic Limits: Minimum hot engine idle pressure is **0.8 bar (11.6 psi)**. Normal operating range above 3500 RPM is **2.0 to 5.0 bar (29 to 73 psi)**. Cold start maximum peak ceiling limit is **7.0 bar (102 psi)**.
     """
 }
 
@@ -101,10 +103,8 @@ if "vector_index" not in st.session_state:
             with open(METADATA_PATH, "r", encoding="utf-8") as f:
                 st.session_state.vector_metadata = json.load(f)
             st.session_state.documents = list(set(m["source"] for m in st.session_state.vector_metadata))
-        except Exception:
-            st.session_state.vector_index, st.session_state.vector_metadata = None, []
-    else:
-        st.session_state.vector_index, st.session_state.vector_metadata = None, []
+        except Exception: st.session_state.vector_index, st.session_state.vector_metadata = None, []
+    else: st.session_state.vector_index, st.session_state.vector_metadata = None, []
 
 WELCOME_PROMPT = """### 🔧 Engine Selection Required
 Welcome to the workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration. 
@@ -115,10 +115,8 @@ Welcome to the workbench! Before we look up any technical maintenance details, w
 **Please reply with the specific engine type you are working on today:**
 * **912UL** | **912ULS** | **912iS** | **914** | **915iS** | **916iS**"""
 
-if "messages" not in st.session_state:
-    st.session_state.messages = [{"role": "assistant", "content": WELCOME_PROMPT}]
-if "pending_clarification" not in st.session_state:
-    st.session_state.pending_clarification = None
+if "messages" not in st.session_state: st.session_state.messages = [{"role": "assistant", "content": WELCOME_PROMPT}]
+if "pending_clarification" not in st.session_state: st.session_state.pending_clarification = None
 
 # =====================================================
 # 5. TECHNICAL SAFETY LAYERS & CORE ENGINES
@@ -131,21 +129,13 @@ def invalid_configuration(query: str, engine_profile: str = None) -> bool:
     q = query.lower().replace(" ", "").replace("-", "")
     carb_terms = ["carb", "sync", "balance", "float", "choke"]
     injected_engines = ["915", "916", "912is"]
-    is_carb_query = any(t in q for t in carb_terms)
-    is_profile_injected = any(e in engine_profile.lower().replace(" ", "").replace("-", "") for e in injected_engines) if engine_profile else False
-    return is_carb_query and (any(e in q for e in injected_engines) or is_profile_injected)
+    return any(t in q for t in carb_terms) and (any(e in q for e in injected_engines) or any(e in (engine_profile or "").lower() for e in injected_engines))
 
 def get_embedding(text: str, model="text-embedding-3-small"):
     return openai_client.embeddings.create(input=[text.replace("\n", " ")], model=model).data[0].embedding
 
-def send_pushover_alert(title: str, message: str):
-    if not PUSHOVER_USER_KEY or not PUSHOVER_APP_TOKEN: return
-    try:
-        requests.post("https://api.pushover.net/1/messages.json", data={"token": PUSHOVER_APP_TOKEN, "user": PUSHOVER_USER_KEY, "title": title, "message": message, "priority": 1}, timeout=10)
-    except Exception: pass
-
 # =====================================================
-# 6. DOCUMENT INGESTION (FAISS DATABASE BUILDER)
+# 6. DOCUMENT INGESTION
 # =====================================================
 def rebuild_vector_database(uploaded_files):
     all_chunks = []
@@ -174,11 +164,11 @@ def rebuild_vector_database(uploaded_files):
             index.add(np.array(embeddings_list).astype('float32'))
             faiss.write_index(index, INDEX_PATH)
             with open(METADATA_PATH, "w", encoding="utf-8") as f: json.dump(metadata_list, f, ensure_ascii=False, indent=2)
-            st.success("Database built successfully!")
+            st.success("Universal semantic database synchronized successfully!")
             st.rerun()
 
 # =====================================================
-# 7. OPENROUTER HANDSHAKE
+# 7. OPENROUTER PRODUCTION HANDSHAKE
 # =====================================================
 def call_llm(prompt: str):
     headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
@@ -188,7 +178,11 @@ def call_llm(prompt: str):
         "messages": [
             {
                 "role": "system",
-                "content": "You are an expert aviation maintenance mentor for Otimo Aero. Your tone is authoritative and focused heavily on proactive diagnostic warnings. You explain the mechanical reasoning behind specific procedures to ensure shop safety."
+                "content": (
+                    "You are a professional aviation maintenance mentor for Otimo Aero. Your core priority is absolute accuracy and shop safety. "
+                    "You deliver grounded, highly specific diagnostic guidance. You explain the mechanical reasoning behind steps, "
+                    "proactively supply explicit dimensions, quantities, and fluid specifications, and warn of installation pitfalls."
+                )
             },
             {"role": "user", "content": prompt}
         ],
@@ -240,7 +234,7 @@ if user_query:
     with col_ctx:
         with st.chat_message("user"): st.write(user_query)
 
-    # SAFETY GATES
+    # ENGINE LOCK IN GATE
     if st.session_state.active_engine is None:
         engine_match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
         if engine_match:
@@ -248,20 +242,16 @@ if user_query:
             st.session_state.messages.append({"role": "user", "content": user_query})
             st.session_state.messages.append({"role": "assistant", "content": f"### 🔓 WORKSPACE UNLOCKED\nEngine profile securely set to **ROTAX {st.session_state.active_engine}**."})
             st.rerun()
-        else:
-            st.stop()
+        else: st.stop()
 
     # TOPIC EXTRACTOR LOGIC
     if any(w in user_query.lower() for w in ["purge", "oil", "plug", "spark", "gap", "torque", "carb", "sync", "pressure", "fuel", "drain", "magnet", "change"]):
-        if "plug" in user_query.lower() or "gap" in user_query.lower():
-            st.session_state.active_topic = "SPARK PLUG INSPECTION"
-        if "pressure" in user_query.lower() and "oil" in user_query.lower():
-            st.session_state.active_topic = "OIL PRESSURE CHECK"
-        if "drain" in user_query.lower() or "magnet" in user_query.lower() or "change" in user_query.lower():
-            st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
+        if "plug" in user_query.lower() or "gap" in user_query.lower(): st.session_state.active_topic = "SPARK PLUG INSPECTION"
+        if "pressure" in user_query.lower() and "oil" in user_query.lower(): st.session_state.active_topic = "OIL PRESSURE CHECK"
+        if "drain" in user_query.lower() or "magnet" in user_query.lower() or "change" in user_query.lower(): st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
 
     if time_passed < COOLDOWN_SECONDS or len(user_query) > MAX_QUERY_CHARACTERS or st.session_state.daily_token_consumption >= DAILY_TOKEN_BUDGET:
-        st.error("Guardrail violation triggered.")
+        st.error("Guardrail condition triggered.")
         st.stop()
 
     st.session_state.last_query_time = current_time
@@ -271,15 +261,15 @@ if user_query:
     with assistant_canvas:
         response_placeholder = st.empty()
         if invalid_configuration(user_query, st.session_state.active_engine):
-            st.error("Incompatible configuration engine lock.")
+            st.error("Incompatible component layout configuration.")
             st.stop()
         else:
             with st.spinner("Executing mathematical spatial context scan..."):
                 try:
-                    context_str, citations_map = "No matching data.", {}
+                    context_str, citations_map = "No matching data found.", {}
                     search_query = f"{st.session_state.active_topic or ''} {user_query}"
 
-                    # VECTOR THROTTLING: Search radius restricted strictly to Top-4 units for token diet
+                    # Vector query tracking (Top-4 payload throttling to minimize context confusion)
                     if st.session_state.vector_index is not None:
                         query_vector = np.array([get_embedding(search_query)]).astype('float32')
                         distances, indices = st.session_state.vector_index.search(query_vector, 4)
@@ -291,32 +281,32 @@ if user_query:
                                 citations_map.setdefault(chunk_data['source'], set()).add(chunk_data['page'])
                         if matched_chunks: context_str = "\n\n---\n\n".join(matched_chunks)
 
-                    # Dynamic Lookup for the Specification Overrides
-                    active_truth_injection = SPEC_REGISTRY.get(st.session_state.active_topic, "No specific static specification limits required for this general query.")
+                    # Dynamic Lookup for the Active Topic Specifications
+                    active_truth_injection = SPEC_REGISTRY.get(st.session_state.active_topic, "GENERAL RULES: Proactively include precise torque limits, metric fluid quantities, and specific wrench/socket dimensions where relevant to this task.")
 
-                    final_prompt = f"""You must answer the user's question using the manual extracts and the mandatory spec rules below.
-                    ENGINE ASSIGNMENT: ROTAX {st.session_state.active_engine} (4-Stroke only. Completely ban 2-stroke information).
-                    
+                    final_prompt = f"""You are guiding an aircraft technician working on a ROTAX {st.session_state.active_engine} engine.
+                    You must answer using the manual extracts combined with the mandatory engineering rules below.
+
                     {active_truth_injection}
-                    
-                    CRITICAL MECHANICAL ACTION DIRECTIVE:
-                    - Service plugs are threaded bolts. They are always turned/unscrewed using socket tools. They are NEVER 'pulled out' or handled by hand during removal.
-                    - If data in the extracts contradicts the hardcoded truths listed above, discard the extract data instantly and use the hardcoded truths.
-                    - If part numbers are duplicated across distinct components, hide the numbers and state: "Part number not clearly legible in manual extract table."
-                    
+
+                    CRITICAL MECHANICS DIRECTIVE FOR ALL OPERATIONS:
+                    1. REMOVAL LOGIC SAFETY GATE: Service bolts/plugs are threaded metal fasteners. They are ALWAYS removed by turning/unscrewing them with standard wrenches or sockets. They are NEVER pulled, pried, or removed by hand. 
+                    2. TORQUE WRENCH SANITY GATE: Torque parameters and torque wrenches apply EXCLUSIVELY to the final reassembly tightening phase. You are STRICTLY FORBIDDEN from mentioning torque settings or torque wrenches during disassembly or removal steps.
+                    3. PROACTIVE DATA MANDATE: Do not speak in generalizations. You must explicitly output concrete fluid specifications, viscosity profiles, exact volume metrics, thread dimensions, and socket sizes if they are present in the hardcoded matrix or extracts.
+                    4. DATA INTEGRITY FILTER: If a part number is duplicated across completely separate components in the text extracts, treat it as a column parsing error. Hide that number under Section 3 and state: "Part number not clearly legible in manual extract table."
+                    5. BAN ALL TWO-STROKE INFO.
+
                     Structure your response exactly like this:
                     ### 1. QUICK SPEC / PROCEDURE
-                    * (Provide sequential, logical maintenance actions. Explain the mechanical reason behind why each precision checkpoint matters.)
+                    * (Provide complete, sequential maintenance steps divided logically into execution phases. Include exact tools, fluid types, and volumes directly in the steps. Explain *why* critical tolerances matter.)
                     ### 2. ⚠️ WORKBENCH PITFALLS & SAFETY WARNINGS
-                    * (Provide proactive safety warnings pinpointing common workspace mistakes or component-destroying errors.)
+                    * (Provide highly specific safety warnings highlighting common mistakes, over-torquing risks, or part-destroying component traps.)
                     ### 3. PARTS & MANUAL DATA
                     ---
                     MANUAL EXTRACTS: {context_str}
                     USER QUESTION: {user_query}"""
 
                     assistant_response = call_llm(final_prompt)
-                    
-                    # Update real token usage estimations dynamically
                     st.session_state.daily_token_consumption += len(final_prompt.split()) + 1500
                     
                     if citations_map:
