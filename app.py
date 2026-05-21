@@ -60,29 +60,36 @@ COOLDOWN_SECONDS = 5
 MAX_QUERY_CHARACTERS = 400
 DAILY_TOKEN_BUDGET = 450000
 
-# The Absolute Spec Matrix: Used to ground the LLM in real data numbers
 SPEC_REGISTRY = {
     "OIL CHANGE / MAGNETIC PLUG INSPECTION": """
     MANDATORY MECHANICAL TRUTHS & FLUID SPECIFICATIONS:
-    - Removal Phase: Always use standard combination wrenches or standard sockets to loosen plugs. NEVER state or imply a torque wrench is used for loosening or removal.
-    - Draining State: Oil must be drained when warm/hot (immediately after engine operation) to ensure full scavenging and correct fluid viscosity drop.
-    - Approved Oil Type: Use high-quality 4-stroke motorcycle or aviation-specific engine oils tested and approved under Rotax Standard RON 424. Highly recommended: AeroShell Oil Sport Plus 4 (10W-40 or 15W-50 depending on climate). NEVER use automotive oils due to the integrated gearbox and slipper clutch.
-    - Oil Refill Quantity: Refill requires approximately 3.0 Litres (5.3 Imp pints / 6.3 US pints). Total lubrication system capacity is 3.5 Litres, but approximately 0.5 Litres remains trapped inside the oil cooler and lines. Final volume verification must be confirmed via the oil tank dipstick after purging.
-    - Oil Tank Drain Screw: Requires a 17mm socket. Reinstallation tightening torque is strictly **25 Nm (221 in. lb)**. Always fit a new 12 x 18 mm copper sealing ring.
-    - Crankcase Magnetic Plug: Requires a 24mm socket. Reinstallation tightening torque is strictly **20 Nm (177 in. lb)**. Absolute ban on crush washers, gaskets, or thread sealing compounds (Loctite 567/243). Threads must be lubricated solely with clean engine oil before screwing home.
-    - Oil Filter: Rotax Genuine Part No. 825601. Clean the seating flange, coat the rubber seal with clean engine oil, and tighten by hand 3/4 turn after gasket contact, or torque to **14 Nm (124 in. lb)** using a dedicated filter cup tool.
+    - Removal Phase: Use standard hand wrenches or sockets. NEVER use a torque wrench to loosen fasteners.
+    - Fluid Condition: Oil must be drained when warm/hot (operating temperature) to ensure proper scavenging.
+    - Approved Oil Type: 4-stroke motorcycle or aviation engine oils meeting Rotax Standard RON 424 (e.g., AeroShell Sport Plus 4).
+    - Oil Refill Quantity: Requires approximately 3.0 Litres. Verify final levels using the dipstick after venting.
+    - Oil Tank Drain Screw: Requires 17mm socket. Tightening torque is strictly **25 Nm (221 in. lb)**. Fit a new copper ring.
+    - Crankcase Magnetic Plug: Requires 24mm socket. Tightening torque is strictly **20 Nm (177 in. lb)**. Never torque to 25 Nm or 30 Nm. Absolute ban on crush washers, gaskets, or thread sealants (no Loctite). Lubricate threads with clean engine oil only.
+    - Oil Filter: Part No. 825601. Lube gasket with engine oil, hand tighten 3/4 turn, or torque to **14 Nm (124 in. lb)** using cup tool.
     """,
     "SPARK PLUG INSPECTION": """
     MANDATORY MECHANICAL TRUTHS & SPARK PLUG SPECIFICATIONS:
-    - Tool Dimension: Requires an 16mm (5/8") thin-wall spark plug socket. Never use an 18mm socket.
-    - Reinstallation Torque: Tighten strictly to **16 Nm (142 in. lb)** on a completely cold engine head.
-    - Electrode Clearance Profile: New plug gap must measure between **0.8 mm to 0.9 mm (0.031 to 0.035 in)**. Absolute maximum wear limit is **1.1 mm (0.043 in)**. Bending or tapping electrodes is strictly prohibited.
-    - Sealing Pastes: Apply a sparse, minimal film of silicone heat-conduction compound strictly to the upper engagement threads of the plug body. Keep electrodes completely dry.
+    - Tool Dimension: Requires a 16mm (5/8") thin-wall spark plug socket.
+    - Reinstallation Torque: Tighten strictly to **16 Nm (142 in. lb)** on a cold engine casing.
+    - Electrode Clearance: New plug gap is **0.8 mm to 0.9 mm**. Absolute maximum wear limit is **1.1 mm**. Do not manually bend tabs.
+    - Sealing Pastes: Minimal film of silicone heat-conduction paste strictly on upper engagement threads. Keep electrodes dry.
     """,
     "OIL PRESSURE CHECK": """
     MANDATORY DIAGNOSTIC PARAMETERS:
-    - Testing Method: Connect a calibrated mechanical master pressure gauge directly into the main oil pump gallery block port using an M10x1 thread adaptor to crosscheck instrument accuracy.
-    - Hydraulic Limits: Minimum hot engine idle pressure is **0.8 bar (11.6 psi)**. Normal operating range above 3500 RPM is **2.0 to 5.0 bar (29 to 73 psi)**. Cold start maximum peak ceiling limit is **7.0 bar (102 psi)**.
+    - Testing Method: Connect a calibrated mechanical master pressure gauge into the main oil pump gallery block port via M10x1 adaptor.
+    - Hydraulic Limits: Minimum hot idle is **0.8 bar (11.6 psi)**. Normal operation is **2.0 to 5.0 bar (29 to 73 psi)**. Peak cold cap is **7.0 bar (102 psi)**.
+    """,
+    "CARBURETOR SYNCHRONIZATION": """
+    MANDATORY PNEUMATIC SYNCHRONIZATION VALUES & CHECKPOINTS:
+    - Safety First: Stay well clear of the spinning propeller arc during running adjustments. Secure the aircraft wheels firmly.
+    - Pre-Requisite: Mechanical synchronization (cable slack adjustments) must be performed on a completely cold, non-running engine first.
+    - Idle Balancing Limits: Use a calibrated electronic differential pressure gauge (e.g., Carbmate / Synchro) or matching vacuum gauges. Maximum permissible pneumatic pressure variation between carburetor heads at an operating idle of 1800-2000 RPM is strictly **20 mbar (0.29 psi / 0.59 inHg)**. 
+    - Cruise Balancing Limits: Crosscheck synchronization at cruise power thresholds (3500 to 4000 RPM). Permissible variation here is strictly **0 mbar** variance (perfect alignment) via precise cable play adjustments.
+    - Bowden Cables: Verify all throttle cables possess a minimum free play of **1 mm (0.04 in)** when throttle levers are pinned against the physical idle stops.
     """
 }
 
@@ -135,7 +142,7 @@ def get_embedding(text: str, model="text-embedding-3-small"):
     return openai_client.embeddings.create(input=[text.replace("\n", " ")], model=model).data[0].embedding
 
 # =====================================================
-# 6. DOCUMENT INGESTION (OPTIMIZED SLIDING WINDOW)
+# 6. DOCUMENT INGESTION
 # =====================================================
 def rebuild_vector_database(uploaded_files):
     all_chunks = []
@@ -145,18 +152,12 @@ def rebuild_vector_database(uploaded_files):
             for page_num, page in enumerate(reader.pages):
                 page_text = page.extract_text()
                 if page_text:
-                    # Clean up PDF formatting and split into paragraphs
                     clean_text = re.sub(r'\s+', ' ', page_text)
-                    # Create highly efficient ~500 character sliding chunks
                     words = clean_text.split()
                     for i in range(0, len(words), 75):
                         chunk = " ".join(words[i:i+100])
                         if len(chunk.strip()) > 50:
-                            all_chunks.append({
-                                "text": chunk,
-                                "source": uploaded_file.name,
-                                "page": page_num + 1
-                            })
+                            all_chunks.append({"text": chunk, "source": uploaded_file.name, "page": page_num + 1})
         except Exception as e: st.error(f"Error parsing {uploaded_file.name}: {str(e)}")
             
     if all_chunks:
@@ -175,11 +176,11 @@ def rebuild_vector_database(uploaded_files):
             index.add(np.array(embeddings_list).astype('float32'))
             faiss.write_index(index, INDEX_PATH)
             with open(METADATA_PATH, "w", encoding="utf-8") as f: json.dump(metadata_list, f, ensure_ascii=False, indent=2)
-            st.success("Universal semantic database synchronized successfully!")
+            st.success("Universal database synchronized!")
             st.rerun()
 
 # =====================================================
-# 7. OPENROUTER PRODUCTION HANDSHAKE (OPTIMIZED)
+# 7. OPENROUTER HANDSHAKE (TEMPERATURE 0.2 FOR CADENCE)
 # =====================================================
 def call_llm(prompt: str):
     headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
@@ -190,11 +191,9 @@ def call_llm(prompt: str):
             {
                 "role": "system",
                 "content": (
-                    "You are a Senior iRMT LAA/BMAA Inspector and aviation maintenance mentor. "
-                    "You are standing directly beside an independent technician at the workbench. "
-                    "Your tone is authentic, supportive, and deeply informative. You do not act like a robot; "
-                    "you speak naturally, validate the complexity of the task, and proactively explain *why* specific "
-                    "mechanical tolerances and limits matter to keep them safe."
+                    "You are a Senior iRMT LAA/BMAA Inspector and aircraft workshop mentor. Your tone is natural, "
+                    "supportive, technically precise, and conversational. You do not talk like a generic bulleted engine list; "
+                    "you explain the step mechanics clearly to help the user complete the maintenance activity safely."
                 )
             },
             {"role": "user", "content": prompt}
@@ -236,7 +235,7 @@ else:
     with center_console: render_main_workspace()
 
 # =====================================================
-# 10. USER COMMAND RUNNER WITH ARCHITECTURE HOOKS
+# 10. USER COMMAND RUNNER WITH TOPIC FLUSH HOOKS
 # =====================================================
 user_query = st.chat_input("Enter technical maintenance question...")
 
@@ -247,7 +246,6 @@ if user_query:
     with col_ctx:
         with st.chat_message("user"): st.write(user_query)
 
-    # ENGINE LOCK IN GATE
     if st.session_state.active_engine is None:
         engine_match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
         if engine_match:
@@ -257,11 +255,15 @@ if user_query:
             st.rerun()
         else: st.stop()
 
-    # TOPIC EXTRACTOR LOGIC
-    if any(w in user_query.lower() for w in ["purge", "oil", "plug", "spark", "gap", "torque", "carb", "sync", "pressure", "fuel", "drain", "magnet", "change"]):
-        if "plug" in user_query.lower() or "gap" in user_query.lower(): st.session_state.active_topic = "SPARK PLUG INSPECTION"
-        if "pressure" in user_query.lower() and "oil" in user_query.lower(): st.session_state.active_topic = "OIL PRESSURE CHECK"
-        if "drain" in user_query.lower() or "magnet" in user_query.lower() or "change" in user_query.lower(): st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
+    # DYNAMIC TOPIC STATE FLUSHING LAYER (Prevents sticky oil context leaking into carb queries)
+    if any(w in user_query.lower() for w in ["carb", "sync", "balance", "float", "choke"]):
+        st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
+    elif any(w in user_query.lower() for w in ["plug", "gap", "spark"]):
+        st.session_state.active_topic = "SPARK PLUG INSPECTION"
+    elif any(w in user_query.lower() for w in ["pressure", "gauge"]) and "oil" in user_query.lower():
+        st.session_state.active_topic = "OIL PRESSURE CHECK"
+    elif any(w in user_query.lower() for w in ["drain", "magnet", "change", "oil"]):
+        st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
 
     if time_passed < COOLDOWN_SECONDS or len(user_query) > MAX_QUERY_CHARACTERS or st.session_state.daily_token_consumption >= DAILY_TOKEN_BUDGET:
         st.error("Guardrail condition triggered.")
@@ -274,7 +276,7 @@ if user_query:
     with assistant_canvas:
         response_placeholder = st.empty()
         if invalid_configuration(user_query, st.session_state.active_engine):
-            st.error("Incompatible component layout configuration.")
+            st.error("Incompatible carburetration configuration engine block.")
             st.stop()
         else:
             with st.spinner("Executing mathematical spatial context scan..."):
@@ -282,7 +284,6 @@ if user_query:
                     context_str, citations_map = "No matching data found.", {}
                     search_query = f"{st.session_state.active_topic or ''} {user_query}"
 
-                    # Vector query tracking (Top-4 payload throttling to minimize context confusion)
                     if st.session_state.vector_index is not None:
                         query_vector = np.array([get_embedding(search_query)]).astype('float32')
                         distances, indices = st.session_state.vector_index.search(query_vector, 4)
@@ -294,31 +295,30 @@ if user_query:
                                 citations_map.setdefault(chunk_data['source'], set()).add(chunk_data['page'])
                         if matched_chunks: context_str = "\n\n---\n\n".join(matched_chunks)
 
-                    # Dynamic Lookup for the Active Topic Specifications
-                    active_truth_injection = SPEC_REGISTRY.get(st.session_state.active_topic, "GENERAL RULES: Proactively include precise torque limits, metric fluid quantities, and specific wrench/socket dimensions where relevant to this task.")
+                    # Grab context-specific rules
+                    active_truth_injection = SPEC_REGISTRY.get(st.session_state.active_topic, "GENERAL RULES: Provide exact dimensions and tolerances where available.")
 
-                    final_prompt = f"""You are actively mentoring a technician working on a ROTAX {st.session_state.active_engine}. 
-                    Use the provided manual extracts and the Master Engineering Truths below to guide them.
+                    final_prompt = f"""You are actively mentoring an aircraft technician working on a ROTAX {st.session_state.active_engine}.
+                    You must build your response using the manual extracts combined with the mandatory engineering truth matrix rules below.
 
                     {active_truth_injection}
 
-                    AUTHORITATIVE OVERRIDE: The Master Engineering Truths listed above are absolute. They immediately supersede any conflicting part numbers or values found in the manual extracts.
+                    STRICT COGNITIVE SEPARATION RULES:
+                    1. TOPIC CONTEXT ISOLATION: The technician's query may have changed. Read the 'TECHNICIAN'S QUERY' line carefully. If the user is asking about CARBURETORS, you are strictly FORBIDDEN from using or talking about oil tank drain plug torques, copper washers, or oil filters. Keep your workspace completely clean.
+                    2. CRITICAL SPECIFICATION MATCHING: If the Master truths state a value (e.g., Magnetic plug torque is 20 Nm), you must print EXACTLY that value. Never allow data snippets from the extracts to change a hardcoded truth value.
+                    3. FLUID TOOL LOGIC: Plugs and adjusters are threaded fasteners. They are turned with wrench or socket tools. Never say they are removed by hand. Torque wrenches apply strictly to final reassembly tightening.
+                    4. TWO-STROKE INFORMATION IS COMPLETELY BANNED.
 
-                    PHASED WORKBENCH EXECUTION:
-                    1. DISASSEMBLY PHASE: Instruct the user to use standard hand tools (wrenches/sockets) to loosen and remove parts. 
-                    2. REASSEMBLY PHASE: Instruct the user to apply precise torque values only during final installation.
-                    3. DATA CLARITY: Output concrete fluid types, volumes, and thread dimensions. If a part number applies to multiple different components in the text, it is an OCR error; label it "Part number illegible" rather than guessing.
-
-                    Draft your response to the technician using this natural workflow:
+                    Structure your response exactly like this to maintain an authoritative, mentor voice:
 
                     ### 1. THE WORKBENCH PROCEDURE
-                    * Provide a smooth, logically phased walkthrough of the task. Explain the mechanical reasoning behind critical steps so they understand *why* they are doing it.
+                    * Provide a smooth, logically phased walkthrough of the exact task requested. Explain the mechanical reasoning behind why a step or tolerance matters.
 
                     ### 2. ⚠️ INSPECTOR'S SAFETY BRIEF
-                    * Speak directly to the technician. Warn them about specific pitfalls (e.g., stripping soft aluminum casings, ignoring thread lubrication).
+                    * Speak directly to the technician. Warn them about critical failure modes or high-risk blunders specific to this exact procedure.
 
                     ### 3. REQUIRED PARTS & SPECIFICATIONS
-                    * Itemize the tools, exact capacities, and verified part numbers they need to stage on their tray.
+                    * Itemize verified part codes, tool constraints, and clear tolerance dimensions required on their shop tray.
                     ---
                     REFERENCE EXTRACTS: {context_str}
                     TECHNICIAN'S QUERY: {user_query}"""
