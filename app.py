@@ -238,8 +238,11 @@ def call_llm(prompt: str):
             {
                 "role": "system",
                 "content": (
-                    "You are the lead technical AI desk assistant for Otimo Aero, providing maintenance support directly to technicians working on aircraft. "
-                    "You output answers in a strict, professional, itemized layout. No conversational fluff, meta-references, or unhelpful remarks."
+                    "You are an expert, highly authoritative aviation maintenance mentor for Otimo Aero. "
+                    "You guide independent technicians through aircraft workbench procedures. Your tone is grounded, "
+                    "deeply analytical, and focused heavily on proactive diagnostic warnings. You do not simply dump raw data; "
+                    "you explain the mechanics, anticipate common workspace blunders (like over-torquing into soft casings or "
+                    "introducing systemic contamination), and structure output cleanly using professional aviation standards."
                 )
             },
             {"role": "user", "content": prompt}
@@ -363,13 +366,14 @@ if user_query:
             st.stop()
 
     # TOPIC EXTRACTOR LOGIC
-    change_topic_match = re.search(r'(purge|oil|plug|spark|gap|torque|carb|balance|sync|pressure|fuel)', user_query.lower())
+    change_topic_match = re.search(r'(purge|oil|plug|spark|gap|torque|carb|balance|sync|pressure|fuel|drain|magnet|plug)', user_query.lower())
     if change_topic_match and "tool" not in user_query.lower():
         if "purge" in user_query.lower() or "oil" in user_query.lower():
-            if "pressure" not in user_query.lower():
+            if "pressure" not in user_query.lower() and "drain" not in user_query.lower() and "magnet" not in user_query.lower():
                 st.session_state.active_topic = "OIL PURGING"
         elif "plug" in user_query.lower() or "gap" in user_query.lower():
-            st.session_state.active_topic = "SPARK PLUG INSPECTION"
+            if "magnet" not in user_query.lower() and "drain" not in user_query.lower():
+                st.session_state.active_topic = "SPARK PLUG INSPECTION"
         elif "carb" in user_query.lower() or "sync" in user_query.lower() or "balance" in user_query.lower():
             st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
         
@@ -379,6 +383,10 @@ if user_query:
                 st.session_state.active_topic = "OIL PRESSURE CHECK"
             elif "fuel" in user_query.lower():
                 st.session_state.active_topic = "FUEL PRESSURE CHECK"
+                
+        # Mapping for oil change and magnetic plug tracking
+        if "drain" in user_query.lower() or "magnet" in user_query.lower():
+            st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
 
     # GUARDRAIL LAYER A: Cooldown Timer Enforcement
     if time_passed < COOLDOWN_SECONDS:
@@ -486,11 +494,13 @@ To provide the correct technical clearances or procedure parameters, please spec
                         search_query = f"{st.session_state.active_topic} {user_query}"
                     
                     # HYBRID SEARCH PIPELINE: Advanced Context-Specific Query Rewriting
-                    if any(word in user_query.lower() for word in ["test", "troubleshoot", "measure", "gauge", "fault"]):
+                    if any(word in user_query.lower() for word in ["test", "troubleshoot", "measure", "gauge", "fault", "drain", "magnet"]):
                         if "oil" in user_query.lower() and "pressure" in user_query.lower():
                             search_query = "ROTAX lubrication system diagnostics oil pump main gallery mechanical master pressure gauge sensor accuracy testing procedure limits pressure relief valve"
                         elif "fuel" in user_query.lower() and "pressure" in user_query.lower():
                             search_query = "ROTAX fuel system pressure check regulator electric fuel pump delivery tester hose connection specs"
+                        elif "magnet" in user_query.lower() or "drain" in user_query.lower() or "plug" in user_query.lower():
+                            search_query = "ROTAX lubrication system oil change magnetic plug inspection torque limits oil pump casing threads"
                         else:
                             search_query += " diagnostics diagnostic master gauge tool testing procedure measurement parameters heavy maintenance manual MMH MML"
 
@@ -504,7 +514,6 @@ To provide the correct technical clearances or procedure parameters, please spec
                                 if score < 1.3:
                                     chunk_data = st.session_state.vector_metadata[idx]
                                     matched_chunks.append(f"Source: {chunk_data['source']} - Page {chunk_data['page']}\nContent: {chunk_data['text']}")
-                                    # Harvest unique document name and page indices for the automated footers
                                     citation_entry = f"* Manual Document: `{chunk_data['source']}` — **Page {chunk_data['page']}**"
                                     if citation_entry not in source_citations:
                                         source_citations.append(citation_entry)
@@ -514,19 +523,15 @@ To provide the correct technical clearances or procedure parameters, please spec
                     else:
                         context_str = f"System structural configuration info: No technical manual documentation PDFs have been vectorized or uploaded into server memory yet via the administrative workbench panel interface."
 
-                    # Update internal tracking state with estimated query overhead
                     st.session_state.daily_token_consumption += 9000
 
-                   # Adjust prompt rules to explicitly reinforce persistent topic memory
+                    # Adjust prompt rules to explicitly reinforce persistent topic memory
                     topic_context_injection = f"""
                     CRITICAL WORKSPACE LIMITATION:
                     You are explicitly assigned to find information ONLY for the following engine profile baseline: ROTAX {st.session_state.active_engine}.
                     
                     STRICT 2-STROKE BAN:
-                    You are STRICTLY FORBIDDEN from outputting any information related to 2-stroke engines. 
-                    If any manual extract or text chunk mentions: "503", "582", "618", "pre-mix", "oil injection pump cable", "two-stroke", "2-stroke", or "points ignition", you must IMMEDIATELY DISCARD that entire chunk of text. 
-                    Do not suggest any parts, tool sizes, or procedures related to those engines. 
-                    If the only text returned is 2-stroke data, you must output: "No 4-stroke maintenance data found for this query."
+                    You are STRICTLY FORBIDDEN from outputting any information related to 2-stroke engines. If any manual extract mentions "503", "582", "618", "pre-mix", or "two-stroke", discard that chunk immediately.
                     """
 
                     final_prompt = f"""You are supporting a licensed aircraft maintenance technician.
@@ -534,21 +539,27 @@ You must answer the user's question relying EXCLUSIVELY on the provided manual e
 
 {topic_context_injection}
 
+CRITICAL INTEGRITY OVERRIDE - MAGNETIC OIL PLUG:
+If the user's query relates to an oil change, removing/installing the magnetic plug, or the oil tank drain plug, you must explicitly state as a non-negotiable directive that NO crush washer, gasket, or sealing ring should EVER be installed on the Rotax 9-Series magnetic plug. It is a tapered NPT thread designed to seal cleanly via proper torque or thread sealant alone. Installing a washer here prevents proper immersion depth of the magnet into the oil gallery flow and can lead to structural oil leak failures or undetected ferric wear.
+
 CRITICAL DISCIPLINE DIRECTIVE FOR HYDRAULIC PRESSURE TESTING:
 If the user query is asking about testing "OIL PRESSURE" or "FUEL PRESSURE", you are STRICTLY FORBIDDEN from outputting any procedure that mentions "spark plugs", "pistons", "TDC", "cylinder heads", or "differential pressure drop tests". 
 
 CRITICAL DISCIPLINE DIRECTIVE FOR TOOLING:
 For 9-Series engines (912/914/915/916), ALWAYS verify: Spark plug socket MUST be 16mm (5/8"). If extract says 18mm, it is a 2-stroke legacy error—DISCARD IT and use 16mm.
 
-Structure your response exactly like this:
+Structure your response exactly like this to maintain an authoritative, guiding mentor presence:
 
 ### 1. QUICK SPEC / PROCEDURE
-* Provide the concrete, sequential maintenance steps, checks, settings, or technical values.
-* If the task text is missing from the extracts or contaminated by 2-stroke data, explicitly state that manual data for the 4-stroke engine is not present.
+* Provide the concrete, sequential maintenance steps, checks, settings, or technical values extracted from the text below. 
+* Actively explain *why* critical checkpoints matter. Warn the technician about potential failure points (e.g., stripping aluminium crankcase threads, trapping air in lines).
 
-### 2. PARTS & MANUAL DATA
-* List specific part numbers and tool codes.
-* If the data is missing or derived from an excluded 2-stroke chapter, state: \"Manual data gaps present\".
+### 2. ⚠️ WORKBENCH PITFALLS & SAFETY WARNINGS
+* Provide a list of proactive warnings highlighting things that could go wrong if instructions are misapplied, focusing heavily on common mistakes, over-torquing risks, or critical sealing directives (like the magnetic plug washer ban or spark plug compound hazards).
+
+### 3. PARTS & MANUAL DATA
+* List specific part numbers, tool codes, or official manual chapter titles explicitly extracted from the text. 
+* If missing due to text gaps, state: \"Manual data gaps present\".
 
 ---
 MANUAL EXTRACTS:
@@ -558,7 +569,6 @@ USER QUESTION: {user_query}"""
 
                     assistant_response = call_llm(final_prompt)
                     
-                    # Dynamically construct the references footer segment if matching pages exist
                     if source_citations:
                         footer_block = "\n\n---\n\n### 📄 SOURCES & DOCUMENTATION REFERENCES\n"
                         footer_block += "*To verify the safety limits or physical instructions provided above, crosscheck the following mapped manual chapters:*\n"
