@@ -158,7 +158,13 @@ def rebuild_vector_database(uploaded_files):
 # =====================================================
 if "active_engine" not in st.session_state: st.session_state.active_engine = None
 if "active_topic" not in st.session_state: st.session_state.active_topic = None
-if "messages" not in st.session_state: st.session_state.messages = []
+
+# RESTORED INITIAL WELCOME MESSAGE
+if "messages" not in st.session_state: 
+    st.session_state.messages = [{
+        "role": "assistant", 
+        "content": "### 🔧 Engine Selection Required\nWelcome to the workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration.\n\n> ⚠️ **IMPORTANT MAINTENANCE DIRECTIVE / TECHNICAL DISCLAIMER**\n> This AI system is highly experimental and serves strictly as an informational guide. All users must cross-reference and double-check instructions, tolerances, and part arrays against official hardcopy documentation before altering any flight system. If in any doubt regarding configuration safety, immediately stop work and contact a qualified iRMT.\n\n**Please reply with the specific engine type you are working on today:**\n* **912UL** | **912ULS** | **912iS** | **914** | **915iS** | **916iS**"
+    }]
 
 # Load FAISS Index
 if "vector_index" not in st.session_state:
@@ -182,33 +188,40 @@ if st.query_params.get("admin") == "true":
             st.rerun()
 
 # =====================================================
-# 6. MAIN WORKSPACE & ROUTING
+# 6. MAIN WORKSPACE UI RENDER (FIXED)
+# =====================================================
+_, center_console, _ = st.columns([0.15, 0.70, 0.15])
+
+with center_console:
+    # TITLE & HEADER ARE NOW ALWAYS VISIBLE
+    st.title("Otimo Aero AI Technician")
+    
+    engine_label = st.session_state.active_engine or "NOT INITIALISED"
+    task_label = st.session_state.active_topic or "Awaiting Input"
+    st.markdown(f"> **Engine:** `{engine_label}` &nbsp;&nbsp;|&nbsp;&nbsp; **Task:** `{task_label}`")
+    st.write("")
+    
+    # CHAT HISTORY IS NOW ALWAYS VISIBLE
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]): st.write(msg["content"])
+
+# =====================================================
+# 7. INPUT ROUTING & EXECUTION
 # =====================================================
 if st.session_state.active_engine is None:
-    query = st.chat_input("Enter Engine Type...")
-    if query:
-        match = re.search(r'(912\s*uls|915|916)', query.lower())
+    user_query = st.chat_input("Enter Engine Type...")
+    if user_query:
+        match = re.search(r'(912\s*uls|915|916)', user_query.lower())
         if match:
             st.session_state.active_engine = "915IS" if "915" in match.group(0) else match.group(0).upper().replace(" ", "")
+            st.session_state.messages.append({"role": "user", "content": user_query})
+            st.session_state.messages.append({"role": "assistant", "content": f"### 🔓 WORKSPACE UNLOCKED\nEngine profile securely set to **ROTAX {st.session_state.active_engine}**."})
             st.rerun()
-        else: st.warning("Specify: 912ULS, 915iS, 916iS")
+        else: 
+            st.warning("Please specify a valid engine profile: 912ULS, 915iS, 916iS")
 else:
-    _, center_console, _ = st.columns([0.15, 0.70, 0.15])
-    
-    with center_console:
-        st.title("Otimo Aero AI Technician")
-        # RESTORED SLEEK HEADER
-        task_label = st.session_state.active_topic or "Awaiting Input"
-        st.markdown(f"> **Engine:** `{st.session_state.active_engine}` &nbsp;&nbsp;|&nbsp;&nbsp; **Task:** `{task_label}`")
-        st.write("")
-        
-        for msg in st.session_state.messages:
-            with st.chat_message(msg["role"]): st.write(msg["content"])
-
     user_query = st.chat_input("Enter maintenance question...")
-    
     if user_query:
-        # Determine Topic
         topic = "GENERAL MAINTENANCE INQUIRY"
         if any(w in user_query.lower() for w in ["100", "200", "service"]): topic = "SCHEDULED 100HR / 200HR INSPECTION"
         elif any(w in user_query.lower() for w in ["drain", "oil"]): topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
@@ -226,8 +239,6 @@ else:
                 st.stop()
             else:
                 with st.spinner("Executing spatial context scan..."):
-                    
-                    # RESTORED RAG / FAISS VECTOR SEARCH
                     context_str = "No specific manual match found."
                     if st.session_state.vector_index is not None:
                         search_query = f"{st.session_state.active_engine} {st.session_state.active_topic} {user_query}"
@@ -236,7 +247,6 @@ else:
                         chunks = [st.session_state.vector_metadata[i]['text'] for i in ind[0] if i != -1 and i < len(st.session_state.vector_metadata)]
                         if chunks: context_str = "\n\n---\n\n".join(chunks)
 
-                    # FLUSH-ALIGNED SYSTEM INSTRUCTIONS (Fixes prompt indentation bug)
                     system_instructions = """You are an expert Rotax AI Technician. 
 1. THE WORKBENCH PROCEDURE: Provide concise steps. Incorporate relevant data from the REFERENCE EXTRACTS.
 2. ⚠️ INSPECTOR'S SAFETY BRIEF: Identify 2 critical high-risk modes.
