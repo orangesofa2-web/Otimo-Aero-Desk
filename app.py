@@ -1,3 +1,14 @@
+def enforce_referral_source():
+    headers = st.context.headers
+    referer = headers.get("Referer", "")
+    # Check if the user came from your site
+    if "otimoaero.com" not in referer and "localhost" not in referer:
+        st.error("🔒 **Access Denied:** Please access the technician portal through the official website.")
+        st.stop()
+
+# Call this at the start of your main execution
+enforce_referral_source()
+
 import os
 import sys
 
