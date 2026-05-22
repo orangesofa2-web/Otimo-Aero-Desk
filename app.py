@@ -1,6 +1,21 @@
 import os
-# Force Streamlit to look for secrets in a non-existent location
-os.environ["STREAMLIT_SECRETS_PATH"] = "/dev/null/secrets.toml"
+import sys
+
+# 1. Force Streamlit to use a memory-only configuration
+# This prevents it from looking for .streamlit folders on disk.
+os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
+os.environ["STREAMLIT_SERVER_PORT"] = "8080"
+
+# 2. Redirect the secrets path to a safe, non-searching directory
+# We set this to the /tmp folder which exists in all Cloud Run containers.
+os.environ["STREAMLIT_SECRETS_PATH"] = "/tmp/empty_secrets.toml"
+
+# 3. Create that empty file so Streamlit finds it and stops searching
+with open("/tmp/empty_secrets.toml", "w") as f:
+    f.write("")
+
+# NOW import streamlit
+import streamlit as st
 import re
 import json
 import hashlib
