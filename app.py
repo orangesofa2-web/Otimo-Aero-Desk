@@ -50,13 +50,17 @@ ADMIN_PASSWORD = get_secret("ADMIN_PASSWORD")
 # =====================================================
 # 1. PAGE CONFIGURATION & INJECTED STRUCTURAL CSS
 # =====================================================
-st.set_page_config(page_title="Otimo Aero AI Technician", page_icon="✈️", layout="wide")
+st.set_page_config(
+    page_title="Otimo Aero AI Technician", 
+    page_icon="✈️", 
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
+# Add this to hide the sidebar toggle button from the UI entirely
 st.markdown("""
     <style>
-    div[data-testid="stChatInput"] { max-width: 70% !important; margin: 0 auto !important; }
-    .stChatInputContainer { max-width: 70% !important; margin: 0 auto !important; }
-    .block-container { padding-bottom: 150px !important; } 
+    [data-testid="stSidebar"] { display: none !important; }
     </style>
     """, unsafe_allow_html=True)
 
