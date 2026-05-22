@@ -11,15 +11,19 @@ from pypdf import PdfReader
 from openai import OpenAI
 
 def get_secret(key):
-    # If running in Cloud Run, skip st.secrets entirely
-    if "K_SERVICE" in os.environ:
-        return os.environ.get(key)
+    # Aggressively prioritize Environment Variables first
+    val = os.environ.get(key)
+    if val:
+        return val
     
-    # If running locally, attempt to use Streamlit secrets
-    try:
-        return st.secrets.get(key) or os.environ.get(key)
-    except Exception:
-        return os.environ.get(key)
+    # Only if not in Cloud Run and not in Env, check st.secrets
+    if "K_SERVICE" not in os.environ:
+        try:
+            import streamlit as st
+            return st.secrets.get(key)
+        except:
+            return None
+    return None
 
 OPENROUTER_API_KEY = get_secret("OPENROUTER_API_KEY")
 OPENAI_API_KEY = get_secret("OPENAI_API_KEY")
