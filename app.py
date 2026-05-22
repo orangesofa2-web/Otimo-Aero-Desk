@@ -1,30 +1,35 @@
 import os
-import sys
-
-# 1. First, perform the imports
 import streamlit as st
 
-# 2. Then, define your enforcement function
-def enforce_referral_source():
-    # Now 'st' is safe to use because it was imported above
-    headers = st.context.headers
-    referer = headers.get("Referer", "")
-    if "otimoaero.com" not in referer and "localhost" not in referer:
-        st.error("🔒 Access Denied: Please access the technician portal through the official website.")
-        st.stop()
-
-# 3. Apply the security patch (as before)
+# 1. ENVIRONMENT BYPASS (Must come before any UI rendering)
 os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
 os.environ["STREAMLIT_SERVER_PORT"] = "8080"
 os.environ["STREAMLIT_SECRETS_PATH"] = "/tmp/empty_secrets.toml"
 
-with open("/tmp/empty_secrets.toml", "w") as f:
-    f.write("")
+# Ensure the dummy secrets file exists
+if not os.path.exists("/tmp/empty_secrets.toml"):
+    with open("/tmp/empty_secrets.toml", "w") as f:
+        f.write("")
 
-# 4. NOW call the enforcement function
+# 2. SECURITY MIDDLEWARE (Must happen before any app logic)
+def enforce_referral_source():
+    # Use standard Streamlit context headers
+    headers = st.context.headers
+    referer = headers.get("Referer", "")
+    
+    # DEBUG: View in Cloud Run Logs what the app is seeing
+    print(f"DEBUG: Referer header is: {referer}")
+    
+    # If the referer is empty (or not your domain), we stop it
+    # We allow 'localhost' for local testing
+    if "otimoaero.com" not in referer and "localhost" not in referer:
+        st.error("🔒 Access Denied: Please use the official portal.")
+        st.stop()
+
+# Execute the security check
 enforce_referral_source()
 
-# 5. Finally, import your other libraries and run the rest of your app
+# 3. NOW LOAD YOUR APP LOGIC
 import re
 import json
 import hashlib
@@ -34,6 +39,8 @@ import requests
 import faiss
 from pypdf import PdfReader
 from openai import OpenAI
+
+# ... Rest of your application ...
 
 # ... rest of your code ...
 
