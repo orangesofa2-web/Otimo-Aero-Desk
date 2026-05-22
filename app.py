@@ -1,35 +1,26 @@
 import os
 import streamlit as st
 
-# 1. ENVIRONMENT BYPASS (Must come before any UI rendering)
+# 1. ENVIRONMENT CONFIGURATION (Must be at the very top of logic)
 os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
 os.environ["STREAMLIT_SERVER_PORT"] = "8080"
 os.environ["STREAMLIT_SECRETS_PATH"] = "/tmp/empty_secrets.toml"
 
-# Ensure the dummy secrets file exists
 if not os.path.exists("/tmp/empty_secrets.toml"):
     with open("/tmp/empty_secrets.toml", "w") as f:
         f.write("")
 
-# 2. SECURITY MIDDLEWARE (Must happen before any app logic)
+# 2. ANALYTICS/SECURITY MIDDLEWARE
 def enforce_referral_source():
-    # Use standard Streamlit context headers
     headers = st.context.headers
-    referer = headers.get("Referer", "")
-    
-    # DEBUG: View in Cloud Run Logs what the app is seeing
-    print(f"DEBUG: Referer header is: {referer}")
-    
-    # If the referer is empty (or not your domain), we stop it
-    # We allow 'localhost' for local testing
-    if "otimoaero.com" not in referer and "localhost" not in referer:
-        st.error("🔒 Access Denied: Please use the official portal.")
-        st.stop()
+    referer = headers.get("Referer", "NONE")
+    # This prints to Cloud Run Logs - essential for your analytics
+    print(f"ANALYTICS: User arrived from: {referer}")
 
-# Execute the security check
+# Execute
 enforce_referral_source()
 
-# 3. NOW LOAD YOUR APP LOGIC
+# 3. OTHER IMPORTS AND APP LOGIC
 import re
 import json
 import hashlib
@@ -39,6 +30,8 @@ import requests
 import faiss
 from pypdf import PdfReader
 from openai import OpenAI
+
+# ... (Rest of your original application logic)
 
 # ... Rest of your application ...
 
