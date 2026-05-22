@@ -1,32 +1,30 @@
-def enforce_referral_source():
-    headers = st.context.headers
-    referer = headers.get("Referer", "")
-    # Check if the user came from your site
-    if "otimoaero.com" not in referer and "localhost" not in referer:
-        st.error("🔒 **Access Denied:** Please access the technician portal through the official website.")
-        st.stop()
-
-# Call this at the start of your main execution
-enforce_referral_source()
-
 import os
 import sys
 
-# 1. Force Streamlit to use a memory-only configuration
-# This prevents it from looking for .streamlit folders on disk.
+# 1. First, perform the imports
+import streamlit as st
+
+# 2. Then, define your enforcement function
+def enforce_referral_source():
+    # Now 'st' is safe to use because it was imported above
+    headers = st.context.headers
+    referer = headers.get("Referer", "")
+    if "otimoaero.com" not in referer and "localhost" not in referer:
+        st.error("🔒 Access Denied: Please access the technician portal through the official website.")
+        st.stop()
+
+# 3. Apply the security patch (as before)
 os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
 os.environ["STREAMLIT_SERVER_PORT"] = "8080"
-
-# 2. Redirect the secrets path to a safe, non-searching directory
-# We set this to the /tmp folder which exists in all Cloud Run containers.
 os.environ["STREAMLIT_SECRETS_PATH"] = "/tmp/empty_secrets.toml"
 
-# 3. Create that empty file so Streamlit finds it and stops searching
 with open("/tmp/empty_secrets.toml", "w") as f:
     f.write("")
 
-# NOW import streamlit
-import streamlit as st
+# 4. NOW call the enforcement function
+enforce_referral_source()
+
+# 5. Finally, import your other libraries and run the rest of your app
 import re
 import json
 import hashlib
@@ -34,9 +32,10 @@ import time
 import numpy as np
 import requests
 import faiss
-import streamlit as st
 from pypdf import PdfReader
 from openai import OpenAI
+
+# ... rest of your code ...
 
 def get_secret(key):
     # Aggressively prioritize Environment Variables first
