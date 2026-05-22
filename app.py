@@ -88,27 +88,21 @@ def verify_hosting_environment():
 # =====================================================
 # 3. API CONFIGURATION & SAFETY GATES
 # =====================================================
-# The empty brackets {} at the end tell Streamlit: "If you don't find a file, just return None"
-# Change your API and Password lines to these:
+# We rely EXCLUSIVELY on environment variables. 
+# st.secrets is ignored to prevent Streamlit SecretNotFoundError.
 
-# REPLACE YOUR CURRENT LINE 103 WITH THIS:
-# This checks environment variables FIRST and ignores st.secrets entirely.
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+def get_secret(key):
+    """Aggressively prioritizes Environment Variables only."""
+    return os.environ.get(key)
 
-if not OPENROUTER_API_KEY:
-    st.error("Configuration Error: OPENROUTER_API_KEY not found in environment.")
-    st.stop()
+OPENROUTER_API_KEY = get_secret("OPENROUTER_API_KEY")
+OPENAI_API_KEY = get_secret("OPENAI_API_KEY")
+ADMIN_PASSWORD = get_secret("ADMIN_PASSWORD")
 
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", {}) or os.environ.get("OPENAI_API_KEY")
-
-ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", {}) or os.environ.get("ADMIN_PASSWORD")
-
+# Hard gate for mandatory credentials
 if not OPENROUTER_API_KEY or not OPENAI_API_KEY or not ADMIN_PASSWORD:
-    st.error("Missing required credentials or ADMIN_PASSWORD configuration in Streamlit Secrets.")
+    st.error("Configuration Error: Required API keys or ADMIN_PASSWORD missing from Environment Variables.")
     st.stop()
-
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 INDEX_PATH = "faiss_index.bin"
 METADATA_PATH = "faiss_metadata.json"
