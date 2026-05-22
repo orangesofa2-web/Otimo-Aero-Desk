@@ -10,6 +10,21 @@ import streamlit as st
 from pypdf import PdfReader
 from openai import OpenAI
 
+def get_secret(key):
+    # If running in Cloud Run, skip st.secrets entirely
+    if "K_SERVICE" in os.environ:
+        return os.environ.get(key)
+    
+    # If running locally, attempt to use Streamlit secrets
+    try:
+        return st.secrets.get(key) or os.environ.get(key)
+    except Exception:
+        return os.environ.get(key)
+
+OPENROUTER_API_KEY = get_secret("OPENROUTER_API_KEY")
+OPENAI_API_KEY = get_secret("OPENAI_API_KEY")
+ADMIN_PASSWORD = get_secret("ADMIN_PASSWORD")
+
 # =====================================================
 # 1. PAGE CONFIGURATION & INJECTED STRUCTURAL CSS
 # =====================================================
