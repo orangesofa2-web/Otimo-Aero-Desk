@@ -51,7 +51,8 @@ def verify_hosting_environment():
 # =====================================================
 # 3. API CONFIGURATION & SAFETY GATES
 # =====================================================
-OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY") or os.environ.get("OPENROUTER_API_KEY")
+# The empty brackets {} at the end tell Streamlit: "If you don't find a file, just return None"
+OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", {}) or os.environ.get("OPENROUTER_API_KEY")
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
 ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD") # Pulls password securely from secrets
 
