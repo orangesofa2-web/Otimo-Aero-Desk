@@ -410,9 +410,29 @@ with col_layout:
 # =====================================================
 user_query = st.chat_input("Enter engine profile code or technician system question...")
 
+def is_prompt_injection(user_input):
+    INJECTION_PATTERNS = [
+        r"ignore\s+all\s+previous\s+instructions",
+        r"disregard\s+all\s+rules",
+        r"system\s+override",
+        r"reveal\s+your\s+system\s+prompt"
+    ]
+    for pattern in INJECTION_PATTERNS:
+        if re.search(pattern, user_input, re.IGNORECASE):
+            return True
+    return False
+
 if user_query:
+    # --- ADD THIS NEW FILTER CHECK HERE ---
+    if is_prompt_injection(user_query):
+        with col_layout:
+            st.error("⚠️ Security Alert: Malicious input detected. Request blocked.")
+            st.stop()
+    # --------------------------------------
+    
     with col_layout:
         with st.chat_message("user"): st.write(user_query)
+    # ... rest of your existing logic continues here
 
     if st.session_state.active_engine is None:
         engine_match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
