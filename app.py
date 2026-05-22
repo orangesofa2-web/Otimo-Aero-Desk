@@ -52,9 +52,13 @@ def verify_hosting_environment():
 # 3. API CONFIGURATION & SAFETY GATES
 # =====================================================
 # The empty brackets {} at the end tell Streamlit: "If you don't find a file, just return None"
+# Change your API and Password lines to these:
+
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", {}) or os.environ.get("OPENROUTER_API_KEY")
-OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
-ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD") # Pulls password securely from secrets
+
+OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", {}) or os.environ.get("OPENAI_API_KEY")
+
+ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", {}) or os.environ.get("ADMIN_PASSWORD")
 
 if not OPENROUTER_API_KEY or not OPENAI_API_KEY or not ADMIN_PASSWORD:
     st.error("Missing required credentials or ADMIN_PASSWORD configuration in Streamlit Secrets.")
