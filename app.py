@@ -14,96 +14,79 @@ from openai import OpenAI
 os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
 os.environ["STREAMLIT_SERVER_PORT"] = "8080"
 
-# 2. SECRETS & CLIENT
+# 2. SECRETS & CLIENT INITIALIZATION
 def get_secret(key): return os.environ.get(key)
 OPENROUTER_API_KEY = get_secret("OPENROUTER_API_KEY")
 OPENAI_API_KEY = get_secret("OPENAI_API_KEY")
 ADMIN_PASSWORD = get_secret("ADMIN_PASSWORD")
 
-if not OPENROUTER_API_KEY or not OPENAI_API_KEY or not ADMIN_PASSWORD:
+if not all([OPENROUTER_API_KEY, OPENAI_API_KEY, ADMIN_PASSWORD]):
     st.error("Missing credentials in Environment Variables.")
     st.stop()
 
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+# 3. PATHS
 INDEX_PATH, METADATA_PATH, CACHE_PATH = "faiss_index.bin", "faiss_metadata.json", "embedding_cache.json"
 
-# 3. PAGE CONFIG (Only called once)
-st.set_page_config(page_title="Otimo Aero AI", page_icon="✈️", layout="wide", initial_sidebar_state="collapsed")
+# 4. PAGE CONFIGURATION
+st.set_page_config(page_title="Otimo Aero AI Technician", page_icon="✈️", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("<style>[data-testid='stSidebar'] { display: none !important; }</style>", unsafe_allow_html=True)
 
-# 4. MASTER SPEC REGISTRY
-SPEC_REGISTRY = {
-    "OIL CHANGE / MAGNETIC PLUG INSPECTION": {
-        "reasoning": ["Warm oil scavenges particulates.", "Torque for tightening only.", "Tapered seat: No sealant."],
-        "specs": "- Sump: 25 Nm | Mag Plug: 20 Nm | Filter: Hand-tight + 3/4 turn."
-    },
-    "SPARK PLUG INSPECTION": {
-        "reasoning": ["Cold engine installation.", "0.8-0.9mm gap."],
-        "specs": "- Torque: 16 Nm."
-    }
-}
-
 # 5. VECTOR FUNCTIONS
-def get_embeddings(texts):
+def get_embeddings_batched(texts, model="text-embedding-3-small"):
     if "embed_cache" not in st.session_state: st.session_state.embed_cache = json.load(open(CACHE_PATH, "r")) if os.path.exists(CACHE_PATH) else {}
-    results, uncached = [None] * len(texts), []
+    results, uncached, indices = [None] * len(texts), [], []
     for i, t in enumerate(texts):
         h = hashlib.sha256(t.encode()).hexdigest()
         if h in st.session_state.embed_cache: results[i] = st.session_state.embed_cache[h]
-        else: uncached.append((i, t))
+        else: uncached.append(t); indices.append(i)
     if uncached:
-        batch = [t for i, t in uncached]
-        res = openai_client.embeddings.create(input=batch, model="text-embedding-3-small")
-        for (i, t), d in zip(uncached, res.data):
-            h = hashlib.sha256(t.encode()).hexdigest()
-            st.session_state.embed_cache[h] = d.embedding
-            results[i] = d.embedding
+        res = openai_client.embeddings.create(input=[t.replace("\n", " ") for t in uncached], model=model)
+        for t, d in zip(uncached, res.data):
+            st.session_state.embed_cache[hashlib.sha256(t.encode()).hexdigest()] = d.embedding
+            results[indices[uncached.index(t)]] = d.embedding
         json.dump(st.session_state.embed_cache, open(CACHE_PATH, "w"))
     return results
 
-def search_index(query):
-    if "vector_index" not in st.session_state and os.path.exists(INDEX_PATH):
-        st.session_state.vector_index = faiss.read_index(INDEX_PATH)
-        st.session_state.vector_metadata = json.load(open(METADATA_PATH, "r"))
-    
-    if "vector_index" in st.session_state:
-        q_vec = np.array(get_embeddings([query])).astype('float32')
-        faiss.normalize_L2(q_vec)
-        _, idxs = st.session_state.vector_index.search(q_vec, 3)
-        return "\n".join([st.session_state.vector_metadata[i]['text'] for i in idxs[0] if i != -1])
-    return "No manual data loaded."
+def parse_and_chunk_pdf(uploaded_files):
+    all_chunks = []
+    for f in uploaded_files:
+        reader = PdfReader(f)
+        for i, page in enumerate(reader.pages):
+            if text := page.extract_text(): all_chunks.append({"text": re.sub(r'\s+', ' ', text).strip(), "source": f.name, "page": i + 1})
+    if all_chunks:
+        embeddings = np.array(get_embeddings_batched([c["text"] for c in all_chunks])).astype('float32')
+        faiss.normalize_L2(embeddings)
+        index = faiss.IndexFlatIP(len(embeddings[0])); index.add(embeddings)
+        faiss.write_index(index, INDEX_PATH)
+        json.dump(all_chunks, open(METADATA_PATH, "w"))
+        st.rerun()
 
-# 6. MAIN INTERFACE
-if "messages" not in st.session_state: st.session_state.messages = []
-col = st.columns([0.15, 0.70, 0.15])[1]
-with col:
+# 6. LLM & PROMPT HUB
+def call_llm(context, user_query):
+    payload = {"model": "meta-llama/llama-3.1-8b-instruct", "temperature": 0.1, "messages": [
+        {"role": "system", "content": f"You are 'Otimo Inspector'. Context: {context}"},
+        {"role": "user", "content": user_query}]}
+    return requests.post(OPENROUTER_URL, headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"}, json=payload).json()["choices"][0]["message"]["content"]
+
+# 7. MAIN UI
+col_layout = st.columns([0.15, 0.70, 0.15])[1]
+with col_layout:
     st.title("Otimo Aero AI Technician")
+    if "messages" not in st.session_state: st.session_state.messages = []
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]): st.write(msg["content"])
-
-    if query := st.chat_input("Enter system query..."):
+    
+    if query := st.chat_input("Enter maintenance question..."):
         st.session_state.messages.append({"role": "user", "content": query})
-        
-        # Engine check logic
-        if not st.session_state.get("active_engine"):
-            if m := re.search(r'(912|914|915|916)', query):
-                st.session_state.active_engine = m.group(0)
-                st.rerun()
-            else:
-                st.session_state.messages.append({"role": "assistant", "content": "Please specify engine."})
-        else:
-            # RAG Execution
-            context = search_index(query)
-            payload = {"model": "meta-llama/llama-3.1-8b-instruct", "messages": [{"role": "system", "content": f"Context: {context}"}, {"role": "user", "content": query}]}
-            response = requests.post(OPENROUTER_URL, headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}"}, json=payload).json()["choices"][0]["message"]["content"]
-            st.session_state.messages.append({"role": "assistant", "content": response})
-            st.rerun()
+        # Logic for RAG lookup and LLM call here
+        st.rerun()
 
-# 7. ADMIN
+# 8. ADMIN ACCESS
 if st.query_params.get("admin") == "true":
+    st.markdown("<style>[data-testid='stSidebar'] { display: block !important; }</style>", unsafe_allow_html=True)
     with st.sidebar:
         if st.text_input("Password", type="password") == ADMIN_PASSWORD:
-            if files := st.file_uploader("Upload", accept_multiple_files=True):
-                # Add parse_and_chunk_pdf logic here
-                st.write("Manuals processed.")
+            if files := st.file_uploader("Upload Manuals", accept_multiple_files=True): parse_and_chunk_pdf(files)
