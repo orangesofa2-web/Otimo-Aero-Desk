@@ -100,7 +100,13 @@ def verify_hosting_environment():
 # The empty brackets {} at the end tell Streamlit: "If you don't find a file, just return None"
 # Change your API and Password lines to these:
 
-OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY", {}) or os.environ.get("OPENROUTER_API_KEY")
+# REPLACE YOUR CURRENT LINE 103 WITH THIS:
+# This checks environment variables FIRST and ignores st.secrets entirely.
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+
+if not OPENROUTER_API_KEY:
+    st.error("Configuration Error: OPENROUTER_API_KEY not found in environment.")
+    st.stop()
 
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY", {}) or os.environ.get("OPENAI_API_KEY")
 
