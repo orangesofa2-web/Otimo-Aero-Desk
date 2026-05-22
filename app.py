@@ -1,26 +1,15 @@
 import os
 import streamlit as st
 
-# 1. ENVIRONMENT CONFIGURATION (Must be at the very top of logic)
+# Essential config
 os.environ["STREAMLIT_SERVER_HEADLESS"] = "true"
 os.environ["STREAMLIT_SERVER_PORT"] = "8080"
-os.environ["STREAMLIT_SECRETS_PATH"] = "/tmp/empty_secrets.toml"
 
-if not os.path.exists("/tmp/empty_secrets.toml"):
-    with open("/tmp/empty_secrets.toml", "w") as f:
-        f.write("")
+# REMOVE the enforce_referral_source() call entirely.
+# It is the single biggest risk factor right now.
+# If you want to track analytics, do it in a way that doesn't 
+# involve any conditional logic that can trigger st.stop().
 
-# 2. ANALYTICS/SECURITY MIDDLEWARE
-def enforce_referral_source():
-    headers = st.context.headers
-    referer = headers.get("Referer", "NONE")
-    # This prints to Cloud Run Logs - essential for your analytics
-    print(f"ANALYTICS: User arrived from: {referer}")
-
-# Execute
-enforce_referral_source()
-
-# 3. OTHER IMPORTS AND APP LOGIC
 import re
 import json
 import hashlib
@@ -30,6 +19,8 @@ import requests
 import faiss
 from pypdf import PdfReader
 from openai import OpenAI
+
+# ... rest of your code ...
 
 # ... (Rest of your original application logic)
 
