@@ -46,7 +46,7 @@ def verify_hosting_environment():
         st.stop()
 
 # Trigger Domain Lock Check
-verify_hosting_environment()
+# verify_hosting_environment()
 
 # =====================================================
 # 3. API CONFIGURATION & SAFETY GATES
