@@ -2,20 +2,19 @@ import os
 import re
 import json
 import hashlib
+import time
 import numpy as np
 import requests
 import faiss
-import time
 import streamlit as st
 from pypdf import PdfReader
 from openai import OpenAI
 
 # =====================================================
-# 1. PAGE CONFIGURATION & STYLING
+# 1. PAGE CONFIGURATION & INJECTED STRUCTURAL CSS
 # =====================================================
 st.set_page_config(page_title="Otimo Aero AI Technician", page_icon="✈️", layout="wide")
 
-# CSS: Anchors input at bottom and keeps fonts standard (no green blockquotes)
 st.markdown("""
     <style>
     div[data-testid="stChatInput"] { max-width: 70% !important; margin: 0 auto !important; }
@@ -25,7 +24,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # =====================================================
-# 2. API CONFIGURATION
+# 2. API CONFIGURATION & SAFETY GATES
 # =====================================================
 OPENROUTER_API_KEY = st.secrets.get("OPENROUTER_API_KEY") or os.environ.get("OPENROUTER_API_KEY")
 OPENAI_API_KEY = st.secrets.get("OPENAI_API_KEY") or os.environ.get("OPENAI_API_KEY")
@@ -42,7 +41,7 @@ METADATA_PATH = "faiss_metadata.json"
 CACHE_PATH = "embedding_cache.json"
 
 # =====================================================
-# 3. SAFETY PARAMETERS & DYNAMIC MASTER SPEC REGISTRY
+# 3. DYNAMIC MASTER SPEC REGISTRY
 # =====================================================
 SPEC_REGISTRY = {
     "OIL CHANGE / MAGNETIC PLUG INSPECTION": {
@@ -178,155 +177,165 @@ SPEC_REGISTRY = {
 }
 
 # =====================================================
-# 4. SESSION STATE INITIALIZATION & CACHE
+# 4. INITIALIZATION & STORAGE CACHE (OPTIMIZATION)
 # =====================================================
 if "active_engine" not in st.session_state: st.session_state.active_engine = None
 if "active_topic" not in st.session_state: st.session_state.active_topic = None
 if "documents" not in st.session_state: st.session_state.documents = []
-
-# Load Embedding Cache (Phase 1 Optimization)
-if "embed_cache" not in st.session_state:
-    if os.path.exists(CACHE_PATH):
-        with open(CACHE_PATH, "r", encoding="utf-8") as f:
-            st.session_state.embed_cache = json.load(f)
-    else: st.session_state.embed_cache = {}
-
 if "messages" not in st.session_state: 
     st.session_state.messages = [{
         "role": "assistant", 
         "content": "### 🔧 Engine Selection Required\nWelcome to the workbench! Before we look up any technical maintenance details, we need to lock onto your precise engine configuration.\n\n**🚨 IMPORTANT MAINTENANCE DIRECTIVE / TECHNICAL DISCLAIMER 🚨**\n*This AI system is highly experimental and serves strictly as an informational guide. All users must cross-reference and double-check instructions, tolerances, and part arrays against official hardcopy documentation before altering any flight system. If in any doubt regarding configuration safety, immediately stop work and contact a qualified iRMT.*\n\n**Please reply with the specific engine type you are working on today:**\n* **912UL** | **912ULS** | **912iS** | **914** | **915iS** | **916iS**"
     }]
 
-# Load FAISS Index
+if "embed_cache" not in st.session_state:
+    if os.path.exists(CACHE_PATH):
+        with open(CACHE_PATH, "r", encoding="utf-8") as f: st.session_state.embed_cache = json.load(f)
+    else: st.session_state.embed_cache = {}
+
 if "vector_index" not in st.session_state:
     if os.path.exists(INDEX_PATH) and os.path.exists(METADATA_PATH):
         try:
             st.session_state.vector_index = faiss.read_index(INDEX_PATH)
-            with open(METADATA_PATH, "r", encoding="utf-8") as f:
-                st.session_state.vector_metadata = json.load(f)
+            with open(METADATA_PATH, "r", encoding="utf-8") as f: st.session_state.vector_metadata = json.load(f)
             st.session_state.documents = list(set(m["source"] for m in st.session_state.vector_metadata))
         except Exception: st.session_state.vector_index, st.session_state.vector_metadata = None, []
     else: st.session_state.vector_index, st.session_state.vector_metadata = None, []
 
 # =====================================================
-# 5. CORE ENGINES: BATCHED EMBEDDINGS (PHASE 1)
+# 5. CORE EMBEDDINGS VECTOR ENGINE (BATCHED & CACHED)
 # =====================================================
-def invalid_configuration(query: str, engine_profile: str = None) -> bool:
-    q = query.lower().replace(" ", "").replace("-", "")
-    carb_terms = ["carb", "sync", "balance", "float", "choke"]
-    injected_engines = ["915", "916", "912is"]
-    return any(t in q for t in carb_terms) and (any(e in q for e in injected_engines) or any(e in (engine_profile or "").lower() for e in injected_engines))
-
 def get_embeddings_batched(texts, model="text-embedding-3-small"):
-    """Phase 1: Generates embeddings in batches and uses a local SHA256 cache to save API costs."""
+    """Optimized Phase 1 Framework: Resolves HTTP overhead via vector array batch processing."""
     results = [None] * len(texts)
     uncached_texts, uncached_indices = [], []
 
-    # Check Cache
     for i, text in enumerate(texts):
-        h = hashlib.sha256(text.encode('utf-8')).hexdigest()
-        if h in st.session_state.embed_cache: results[i] = st.session_state.embed_cache[h]
+        chunk_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
+        if chunk_hash in st.session_state.embed_cache:
+            results[i] = st.session_state.embed_cache[chunk_hash]
         else:
             uncached_texts.append(text)
             uncached_indices.append(i)
 
-    # Batch API Request
     if uncached_texts:
         BATCH_SIZE = 100
         new_embeddings = []
         for i in range(0, len(uncached_texts), BATCH_SIZE):
-            batch = uncached_texts[i:i+BATCH_SIZE]
-            clean_batch = [t.replace("\n", " ") for t in batch]
-            resp = openai_client.embeddings.create(input=clean_batch, model=model)
-            new_embeddings.extend([d.embedding for d in resp.data])
-            time.sleep(0.1) # Throttle safety
+            batch = [t.replace("\n", " ") for t in uncached_texts[i:i+BATCH_SIZE]]
+            response = openai_client.embeddings.create(input=batch, model=model)
+            new_embeddings.extend([d.embedding for d in response.data])
+            time.sleep(0.05)
 
-        # Update Cache
         for i, text in enumerate(uncached_texts):
-            h = hashlib.sha256(text.encode('utf-8')).hexdigest()
-            emb = new_embeddings[i]
-            st.session_state.embed_cache[h] = emb
-            results[uncached_indices[i]] = emb
+            chunk_hash = hashlib.sha256(text.encode('utf-8')).hexdigest()
+            embedding_vector = new_embeddings[i]
+            st.session_state.embed_cache[chunk_hash] = embedding_vector
+            results[uncached_indices[i]] = embedding_vector
 
         with open(CACHE_PATH, "w", encoding="utf-8") as f:
             json.dump(st.session_state.embed_cache, f)
 
     return results
 
+def invalid_configuration(query: str, engine_profile: str = None) -> bool:
+    q = query.lower().replace(" ", "").replace("-", "")
+    carb_terms = ["carb", "sync", "balance", "float", "choke"]
+    injected_engines = ["915", "916", "912is"]
+    return any(t in q for t in carb_terms) and (any(e in q for e in injected_engines) or any(e in (engine_profile or "").lower() for e in injected_engines))
+
 # =====================================================
-# 6. DOCUMENT INGESTION (COSINE SIMILARITY UPDATE)
+# 6. SEMANTIC CHUNKING INGESTION (COSINE MATH)
 # =====================================================
-def rebuild_vector_database(uploaded_files):
+def parse_and_chunk_pdf(uploaded_files):
+    """Optimized Phase 2 Feature: Implements sliding token-like section continuity."""
     all_chunks = []
     for uploaded_file in uploaded_files:
         try:
             reader = PdfReader(uploaded_file)
             for page_num, page in enumerate(reader.pages):
-                page_text = page.extract_text()
-                if page_text:
-                    clean_text = re.sub(r'\s+', ' ', page_text)
-                    words = clean_text.split()
-                    for i in range(0, len(words), 75):
-                        chunk = " ".join(words[i:i+100])
-                        if len(chunk.strip()) > 50:
-                            all_chunks.append({"text": chunk, "source": uploaded_file.name, "page": page_num + 1})
-        except Exception as e: st.error(f"Error parsing {uploaded_file.name}: {str(e)}")
+                text = page.extract_text()
+                if not text: continue
+                normalized_text = re.sub(r'\s+', ' ', text).strip()
+                sentences = re.split(r'(?<=[.!?])\s+', normalized_text)
+                
+                current_chunk = []
+                current_word_count = 0
+                
+                for sentence in sentences:
+                    sentence_words = sentence.split()
+                    if current_word_count + len(sentence_words) > 120:
+                        chunk_str = " ".join(current_chunk)
+                        if len(chunk_str.strip()) > 40:
+                            all_chunks.append({"text": chunk_str, "source": uploaded_file.name, "page": page_num + 1})
+                        current_chunk = current_chunk[-3:] if len(current_chunk) > 3 else current_chunk
+                        current_word_count = sum(len(s.split()) for s in current_chunk)
+                    
+                    current_chunk.append(sentence)
+                    current_word_count += len(sentence_words)
+                
+                if current_chunk:
+                    chunk_str = " ".join(current_chunk)
+                    if len(chunk_str.strip()) > 40:
+                        all_chunks.append({"text": chunk_str, "source": uploaded_file.name, "page": page_num + 1})
+        except Exception as e:
+            st.error(f"Error parsing text streams inside {uploaded_file.name}: {str(e)}")
             
     if all_chunks:
-        with st.spinner("Batching and hashing embeddings (Cache enabled)..."):
+        with st.spinner("Processing optimization tokens into secure cache layer..."):
             texts = [c["text"] for c in all_chunks]
-            embeddings_list = get_embeddings_batched(texts)
+            embeddings = get_embeddings_batched(texts)
             
-            if embeddings_list:
-                # Phase 1: Convert to Cosine Similarity using Inner Product (IndexFlatIP) and L2 Normalization
-                embeddings_array = np.array(embeddings_list).astype('float32')
+            if embeddings:
+                embeddings_array = np.array(embeddings).astype('float32')
                 faiss.normalize_L2(embeddings_array)
                 
                 index = faiss.IndexFlatIP(len(embeddings_array[0]))
                 index.add(embeddings_array)
                 faiss.write_index(index, INDEX_PATH)
                 
-                with open(METADATA_PATH, "w", encoding="utf-8") as f: 
+                with open(METADATA_PATH, "w", encoding="utf-8") as f:
                     json.dump(all_chunks, f, ensure_ascii=False, indent=2)
                 
-                st.success("Universal database synchronized with Cosine logic!")
+                st.success("Universal localized system vector database synchronized!")
                 st.rerun()
 
 # =====================================================
-# 7. LLM COMPRESSED PROMPT ARCHITECTURE
+# 7. PROMPT ENGINEERING SYSTEM HUB
 # =====================================================
-BASE_SYSTEM_PROMPT = """You are 'Otimo Aero AI', an expert AI mentor for aerospace technicians working on ROTAX engines. You are precise, highly technical, and safety-focused. Your job is to address the technician's actual maintenance issues clearly using the verified technical data provided.
+BASE_SYSTEM_PROMPT = """You are 'Otimo Inspector', an expert AI mentor for aerospace technicians working on ROTAX engines. You are precise, highly technical, and safety-focused. Your job is to address the technician's actual maintenance issues clearly using the verified technical data provided.
 
 You MUST structure your response using this exact three-part format:
 
 ### 1. THE WORKBENCH PROCEDURE
 - Provide a clear, step-by-step mechanical walkthrough to address the technician's query.
 - Use the 'MANDATORY REASONING POINTS' to explain the engineering reason behind critical steps.
-- **CRITICAL INLINE SAFETY GATES:** If a step involves danger or high risk, call out that danger explicitly *at that exact step*. Add: "If you lack the confidence or specialized tools to proceed with this activity—as errors here may cause critical mechanical failure, severe personal harm, or death—STOP WORK immediately and contact a certified iRMT inspector."
+- **CRITICAL INLINE SAFETY GATES:** If a step involves danger or high risk, you MUST call out that danger explicitly *at that exact step*. Immediately add a mandatory prompt instructing the user: "If you lack the confidence or specialized tools to proceed with this activity—as errors here may cause critical mechanical failure, severe personal harm, or death—STOP WORK immediately and contact a certified iRMT inspector."
 
 ### 2. ⚠️ INSPECTOR'S SAFETY BRIEF
-- Highlight the 2-3 most critical, high-risk failure modes specific to this active task.
-- **MANDATORY ESCALATION CLOSURE:** Conclude exactly with: "If you lack the confidence or specialized tools for any step, you must step back and contact a qualified iRMT technician."
+- Highlight the 2-3 most critical, high-risk failure modes or mechanical blunders specific to this active task.
+- **MANDATORY ESCALATION CLOSURE:** Conclude this section by advising the user exactly: "If you lack the confidence or specialized tools for any step, you must step back and contact a qualified iRMT technician."
 
 ### 3. REQUIRED SPECS & TOOLING
-- Copy the text from the 'MANDATORY SPECIFICATIONS' block exactly as a clean markdown list. Do not alter the numbers.
+- Copy the text from the 'MANDATORY SPECIFICATIONS MARKDOWN' block provided in the user context exactly, 1:1, as a clean markdown list. Do not alter the numbers, units, or constraints.
 
-GENERAL RULES:
-- **IDENTITY:** You are an AI. NEVER refer to yourself as an iRMT or imply you hold aviation credentials.
-- **iRMT DEFINITION:** "iRMT" stands strictly for "Independent Rotax Maintenance Technician".
-- Focus entirely on the active maintenance topic. Do not invent unverified numbers."""
+STRICT DISCIPLINE RULES:
+- **IDENTITY:** You are an AI model, NOT an iRMT inspector. Never refer to yourself as an inspector or state you hold flight authorization properties.
+- **CARBURETOR HALLUCINATION BAN:** Fuel injected architectures (912iS, 915iS, 916iS) possess NO chokes, float bowls, venturi structures, or mixture screws. Completely reject any context fragments matching carburetor settings if the active engine profile is an 'iS' variant.
+- **GROUNDING ENFORCEMENT:** If the query is completely outside the scope of the provided specifications and reference extracts, do not make up values. State cleanly: "Verification profile data unavailable in loaded documentation references." """
 
-def call_llm(user_context: str, history: list):
+def call_llm(user_context: str, chat_history: list):
+    """Phase 1: Chat conversation history compression layer to bound billing vectors."""
     headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}", "Content-Type": "application/json"}
     
-    # Compress history: System Prompt + Last 4 interactions + New Context
     api_messages = [{"role": "system", "content": BASE_SYSTEM_PROMPT}]
     
-    # Phase 1: Limit chat history to prevent context bloat and lower costs
-    recent_history = history[-4:] if len(history) > 4 else history
-    for msg in recent_history:
-        api_messages.append({"role": msg["role"], "content": msg["content"]})
-        
+    # Prune elements to the last 4 exchanges to protect memory arrays
+    pruned_history = chat_history[-4:] if len(chat_history) > 4 else chat_history
+    for msg in pruned_history:
+        if msg["content"] != user_context:
+            api_messages.append({"role": msg["role"], "content": msg["content"]})
+            
     api_messages.append({"role": "user", "content": user_context})
 
     payload = {
@@ -335,48 +344,46 @@ def call_llm(user_context: str, history: list):
         "messages": api_messages,
         "providers": {"order": ["Lepton", "Together"], "allow_fallbacks": True}
     }
-    response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=120)
-    response_json = response.json()
-    return response_json["choices"][0]["message"]["content"]
+    response = requests.post(OPENROUTER_URL, headers=headers, json=payload, timeout=90)
+    return response.json()["choices"][0]["message"]["content"]
 
 # =====================================================
-# 8. SIDEBAR CONTROL PANEL
+# 8. SECURE ADMINISTRATIVE PRIVILEGES
 # =====================================================
 is_admin_mode = (st.query_params.get("admin") == "true")
 if is_admin_mode:
     with st.sidebar:
-        st.header("⚙️ Admin Control Panel")
-        uploaded_files = st.file_uploader("Upload Technical Manuals", type=["pdf"], accept_multiple_files=True)
-        if uploaded_files: rebuild_vector_database(uploaded_files)
-        if st.button("Clear Manuals Matrix"):
+        st.header("⚙️ System Control Array")
+        uploaded_files = st.file_uploader("Upload Airframe Technical Manuals", type=["pdf"], accept_multiple_files=True)
+        if uploaded_files: parse_and_chunk_pdf(uploaded_files)
+        if st.button("Clear Vector Core"):
             for p in [INDEX_PATH, METADATA_PATH, CACHE_PATH]: 
                 if os.path.exists(p): os.remove(p)
             st.rerun()
 
 # =====================================================
-# 9. MAIN WORKSPACE RENDER
+# 9. RUN INTERFACE SYSTEM
 # =====================================================
-col_ctx = st.container() if is_admin_mode else st.columns([0.15, 0.70, 0.15])[1]
+col_layout = st.container() if is_admin_mode else st.columns([0.15, 0.70, 0.15])[1]
 
-with col_ctx:
+with col_layout:
     st.title("Otimo Aero AI Technician")
     if st.session_state.active_engine:
-        st.markdown(f"#### 🛠️ Workspace Status\n**Engine:** `{st.session_state.active_engine}` &nbsp;&nbsp;|&nbsp;&nbsp; **Task:** `{st.session_state.active_topic or 'Awaiting Input'}`")
+        st.markdown(f"#### 🛠️ Workspace Connected \n**Engine Profile:** `ROTAX {st.session_state.active_engine}` &nbsp;&nbsp;|&nbsp;&nbsp; **Active System Subsystem:** `{st.session_state.active_topic or 'Awaiting Task Identification'}`")
         st.divider()
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]): st.write(message["content"])
 
 # =====================================================
-# 10. ROOT LEVEL USER COMMAND ROUTER (NO NESTING = FOCUS RETAINED)
+# 10. ATOMIC INPUT ROUTER CONTROL
 # =====================================================
-user_query = st.chat_input("Enter Engine Type or Maintenance Question...")
+user_query = st.chat_input("Enter engine profile code or technician system question...")
 
 if user_query:
-    with col_ctx:
+    with col_layout:
         with st.chat_message("user"): st.write(user_query)
 
-    # Engine Lock Logic
     if st.session_state.active_engine is None:
         engine_match = re.search(r'(912\s*uls|912\s*ul|912\s*is|914|915\s*is|915|916\s*is|916)', user_query.lower())
         if engine_match:
@@ -386,13 +393,13 @@ if user_query:
             st.rerun()
         else:
             st.session_state.messages.append({"role": "user", "content": user_query})
-            st.session_state.messages.append({"role": "assistant", "content": "⚠️ **ENGINE PROFILE REQUIRED**\nPlease specify: **912UL | 912ULS | 912iS | 914 | 915iS | 916iS**"})
+            st.session_state.messages.append({"role": "assistant", "content": "⚠️ **ENGINE PROFILE UNINITIALISED**\nState exact specification key setup to unlock workbench access: **912UL | 912ULS | 912iS | 914 | 915iS | 916iS**"})
             st.rerun()
 
-    # Maintenance Query Logic
     else:
         st.session_state.messages.append({"role": "user", "content": user_query})
 
+        # Topic Routing Logic
         if any(w in user_query.lower() for w in ["lane", "volt", "efis", "bus", "generator", "stator"]): st.session_state.active_topic = "DUAL LANE ELECTRICAL DIAGNOSTICS"
         elif any(w in user_query.lower() for w in ["carb", "sync", "balance", "float", "choke"]): st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
         elif any(w in user_query.lower() for w in ["plug", "gap", "spark"]): st.session_state.active_topic = "SPARK PLUG INSPECTION"
@@ -400,33 +407,38 @@ if user_query:
         elif any(w in user_query.lower() for w in ["drain", "magnet", "change", "oil"]): st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
         else: st.session_state.active_topic = "GENERAL MAINTENANCE INQUIRY"
 
-        with col_ctx.chat_message("assistant"):
+        with col_layout.chat_message("assistant"):
             if invalid_configuration(user_query, st.session_state.active_engine):
-                st.error("Incompatible component configuration for this engine profile.")
+                st.error("Critical airworthiness conflict: Attempting carburetor operations on an integrated fuel-injected EMS architecture block. Process terminated.")
                 st.stop()
             else:
-                with st.spinner("Executing mathematical spatial context scan..."):
+                with st.spinner("Scanning vectorized indices for verified technical cross-references..."):
                     try:
-                        context_str, citations_map = "No matching data found.", {}
-                        search_query = f"{st.session_state.active_topic or ''} {user_query}"
+                        context_str, citations_map = "No matching manual data extracted.", {}
+                        
+                        # Metadata Filtering Integration (Item 9)
+                        search_query = f"ROTAX {st.session_state.active_engine} {st.session_state.active_topic} {user_query}"
 
                         if st.session_state.vector_index is not None:
-                            q_vec = np.array([get_embeddings_batched([search_query])[0]]).astype('float32')
-                            faiss.normalize_L2(q_vec) # Phase 1: Cosine Normalization
+                            query_vector = np.array([get_embeddings_batched([search_query])[0]]).astype('float32')
+                            faiss.normalize_L2(query_vector)
                             
-                            distances, indices = st.session_state.vector_index.search(q_vec, 4)
+                            # Cosine Vector Search Optimization
+                            distances, indices = st.session_state.vector_index.search(query_vector, 5)
                             matched_chunks = []
-                            # Higher distance is better in normalized Inner Product (Cosine)
+                            
                             for score, idx in zip(distances[0], indices[0]):
-                                if idx != -1 and score > 0.4 and idx < len(st.session_state.vector_metadata):
+                                # Score threshold > 0.55 ensures strong cosine similarity filtering
+                                if idx != -1 and score > 0.55 and idx < len(st.session_state.vector_metadata):
                                     chunk_data = st.session_state.vector_metadata[idx]
                                     matched_chunks.append(chunk_data['text'])
                                     citations_map.setdefault(chunk_data['source'], set()).add(chunk_data['page'])
+                                    
                             if matched_chunks: context_str = "\n\n---\n\n".join(matched_chunks)
                         
                         topic_data = SPEC_REGISTRY.get(st.session_state.active_topic)
-                        reasoning_points = "\n".join([f"- {point}" for point in topic_data["reasoning_points"]]) if topic_data else "Focus on safety."
-                        specs_markdown = topic_data["specs_and_tooling_markdown"] if topic_data else "Refer to official manuals."
+                        reasoning_points = "\n".join([f"- {point}" for point in topic_data["reasoning_points"]]) if topic_data else "Verify maintenance alignment against line limits manually."
+                        specs_markdown = topic_data["specs_and_tooling_markdown"] if topic_data else "No specific lookup values configured in runtime memory rules."
 
                         user_context = f"""---
 MANDATORY REASONING POINTS FOR: {st.session_state.active_topic}
@@ -435,8 +447,9 @@ MANDATORY REASONING POINTS FOR: {st.session_state.active_topic}
 MANDATORY SPECIFICATIONS MARKDOWN FOR: {st.session_state.active_topic}
 {specs_markdown}
 ---
-ENGINE: ROTAX {st.session_state.active_engine}
-REFERENCE EXTRACTS: {context_str}
+ENGINE MODEL IDENTIFICATION: ROTAX {st.session_state.active_engine}
+REFERENCE EXTRACTS FROM LOADED DOCUMENTS:
+{context_str}
 """
                         assistant_response = call_llm(user_context, st.session_state.messages)
                         
@@ -448,5 +461,5 @@ REFERENCE EXTRACTS: {context_str}
 
                         st.write(assistant_response)
                         st.session_state.messages.append({"role": "assistant", "content": assistant_response})
-                    except Exception as e: 
-                        st.error(f"An error occurred while generating the response: {str(e)}")
+                    except Exception as e:
+                        st.error(f"Airworthiness processor pipeline failure: {str(e)}")
