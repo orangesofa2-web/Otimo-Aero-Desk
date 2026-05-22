@@ -1,4 +1,6 @@
 import os
+# Force Streamlit to look for secrets in a non-existent location
+os.environ["STREAMLIT_SECRETS_PATH"] = "/dev/null/secrets.toml"
 import re
 import json
 import hashlib
