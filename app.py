@@ -334,7 +334,7 @@ You MUST structure your response using this exact three-part format:
 
 STRICT DISCIPLINE RULES:
 - **IDENTITY:** You are an AI model, NOT an iRMT inspector. Never refer to yourself as an inspector or state you hold flight authorization properties.
-- **CARBURETOR HALLUCINATION BAN:** Fuel injected architectures (912iS, 915iS, 916iS) possess NO chokes, float bowls, or mixture screws. Completely reject any context fragments matching carburetor settings if the active engine profile is an 'iS' variant.
+- **TECHNICAL ACCURACY:** The Rotax 912UL, 912ULS, and 914 are strictly CARBURETED engines. The 912iS, 915iS, and 916iS are strictly FUEL INJECTED engines. Never conflate these systems.
 - **GROUNDING ENFORCEMENT:** If the query is completely outside the scope of the provided specifications, state cleanly: "Verification profile data unavailable in loaded documentation references." """
 
 def call_llm(user_context: str, chat_history: list):
@@ -411,6 +411,8 @@ if user_query:
             st.rerun()
 
     else:
+        st.session_state.messages.append({"role": "user", "content": user_query})
+
         user_q = user_query.lower()
         if any(w in user_q for w in ["lane", "volt", "efis", "bus", "generator", "stator"]): 
             st.session_state.active_topic = "DUAL LANE ELECTRICAL DIAGNOSTICS"
@@ -450,6 +452,9 @@ if user_query:
                                     
                             if matched_chunks: context_str = "\n\n---\n\n".join(matched_chunks)
                         
+                        injected_profiles = ["912IS", "915", "915IS", "916", "916IS"]
+                        engine_arch = "FUEL INJECTED EMS" if st.session_state.active_engine in injected_profiles else "CARBURETED"
+
                         topic_data = SPEC_REGISTRY.get(st.session_state.active_topic)
                         reasoning_points = "\n".join([f"- {point}" for point in topic_data["reasoning_points"]]) if topic_data else "Verify maintenance alignment against line limits manually."
                         specs_markdown = topic_data["specs_and_tooling_markdown"] if topic_data else "No specific lookup values configured in runtime memory rules."
@@ -461,7 +466,7 @@ MANDATORY REASONING POINTS FOR: {st.session_state.active_topic}
 MANDATORY SPECIFICATIONS MARKDOWN FOR: {st.session_state.active_topic}
 {specs_markdown}
 ---
-ENGINE MODEL IDENTIFICATION: ROTAX {st.session_state.active_engine}
+ENGINE MODEL IDENTIFICATION: ROTAX {st.session_state.active_engine} (ARCHITECTURE: {engine_arch})
 REFERENCE EXTRACTS FROM LOADED DOCUMENTS:
 {context_str}
 """

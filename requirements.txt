@@ -1,6 +1,6 @@
-streamlit
-openai
-faiss-cpu
-numpy
-requests
-pypdf
+streamlit==1.32.0
+openai==1.14.0
+faiss-cpu==1.8.0
+pypdf==4.1.0
+requests==2.31.0
+numpy==1.26.4

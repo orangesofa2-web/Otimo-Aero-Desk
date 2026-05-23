@@ -1,31 +1,18 @@
 # Use a lightweight Python base image
 FROM python:3.11-slim
 
-# Set the working directory inside the container
+# Set the working directory
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    curl \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy and install Python dependencies
+# Copy the requirements and install them
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of your application code
+# Copy your application code
 COPY . .
 
-# Expose the correct port for Cloud Run
+# Expose port 8080 for Google Cloud Run
 EXPOSE 8080
 
-# Run the Streamlit application
-# We use the correct port (8080) and address (0.0.0.0) 
-# and disable security features that interfere with iframe/browser loading
-CMD ["streamlit", "run", "app.py", \
-    "--server.port=8080", \
-    "--server.address=0.0.0.0", \
-    "--server.enableCORS=false", \
-    "--server.enableXsrfProtection=false"]
+# Command to run the application
+CMD ["streamlit", "run", "app.py", "--server.port=8080", "--server.address=0.0.0.0"]
