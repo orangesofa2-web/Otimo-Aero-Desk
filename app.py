@@ -411,14 +411,19 @@ if user_query:
             st.rerun()
 
     else:
-        st.session_state.messages.append({"role": "user", "content": user_query})
-
-        if any(w in user_query.lower() for w in ["lane", "volt", "efis", "bus", "generator", "stator"]): st.session_state.active_topic = "DUAL LANE ELECTRICAL DIAGNOSTICS"
-        elif any(w in user_query.lower() for w in ["carb", "sync", "balance", "float", "choke"]): st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
-        elif any(w in user_query.lower() for w in ["plug", "gap", "spark"]): st.session_state.active_topic = "SPARK PLUG INSPECTION"
-        elif any(w in user_query.lower() for w in ["pressure", "gauge"]) and "oil" in user_query.lower(): st.session_state.active_topic = "OIL PRESSURE CHECK"
-        elif any(w in user_query.lower() for w in ["drain", "magnet", "change", "oil"]): st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
-        else: st.session_state.active_topic = "GENERAL MAINTENANCE INQUIRY"
+        user_q = user_query.lower()
+        if any(w in user_q for w in ["lane", "volt", "efis", "bus", "generator", "stator"]): 
+            st.session_state.active_topic = "DUAL LANE ELECTRICAL DIAGNOSTICS"
+        elif any(w in user_q for w in ["carb", "sync", "balance", "float", "choke"]): 
+            st.session_state.active_topic = "CARBURETOR SYNCHRONIZATION"
+        elif "pressure" in user_q and "oil" in user_q: 
+            st.session_state.active_topic = "OIL PRESSURE CHECK"
+        elif any(w in user_q for w in ["drain", "magnet", "sump", "oil"]): 
+            st.session_state.active_topic = "OIL CHANGE / MAGNETIC PLUG INSPECTION"
+        elif any(w in user_q for w in ["spark", "gap", "plug"]): 
+            st.session_state.active_topic = "SPARK PLUG INSPECTION"
+        else: 
+            st.session_state.active_topic = "GENERAL MAINTENANCE INQUIRY"
 
         with col_layout.chat_message("assistant"):
             if invalid_configuration(user_query, st.session_state.active_engine):
